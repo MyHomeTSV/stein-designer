@@ -1597,7 +1597,8 @@ async function prepareSend() {
     if (packed.length > 60000) { S.sendBody = null; a.setAttribute('aria-disabled', 'true'); $('#sendStatus').innerHTML = '<span class="msg err" style="display:block"><b>Dein Logo ist zum Absenden zu groß.</b> Bitte nimm ein einfacheres Logo oder schreib uns an crowdfunding@tsv-grossenkneten.de.</span>'; return; }
     // Lesbare Zusammenfassung und (bei kurzen Entwürfen) ein Link, der den Stein samt PDF wieder anzeigt
     const inhalt = summaryRows(S.design).map(([a, b]) => a + ': ' + b).join('\n');
-    const ansicht = packed.length <= 1800 ? ANSICHT_URL + '#ansicht=' + packed : '';
+    // Nur der Schlüssel: Die Bestätigungs-E-Mail setzt ihn hinter die feste Adresse und zeigt einen Knopf statt eines langen Links
+    const ansicht = packed.length <= 1800 ? packed : '';
     S.sendBody = JSON.stringify({ SingleLine: S.code, SingleLine1: S.stein, SingleLine2: (S.name || '').slice(0, 250), SingleLine3: '1', SingleLine4: logo, MultiLine: packed, MultiLine1: inhalt, MultiLine2: ansicht, Email: S.mail || '' });
     a.href = '#'; a.setAttribute('aria-disabled', 'false');
   } catch (e) { $('#sendStatus').textContent = 'Das Absenden ließ sich nicht vorbereiten. Bitte lade die Seite neu.'; }
