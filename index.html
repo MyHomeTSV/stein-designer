@@ -252,6 +252,7 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
       <button class="btn btn-primary choice" id="goVorschlag" type="button"><span class="badge">Empfohlen</span><span class="t">Mach mir einen Vorschlag</span><span class="s">Du gibst deinen Text ein. Du bekommst vier fertige Entwürfe.</span></button>
       <button class="btn choice" id="goSelbst" type="button"><span class="t">Selbst gestalten</span><span class="s">Du wählst Vorlage, Schrift und Größe selbst.</span></button>
     </div>
+    <button class="btn" id="goGesendet" type="button" hidden>Deinen abgeschickten Stein ansehen und als PDF speichern</button>
     <button class="btn btn-link" id="goDraft" type="button" hidden>Deinen letzten Entwurf weiter bearbeiten</button>
     <div class="card">
       <h3>Gut zu wissen</h3>
@@ -488,6 +489,9 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
         <h2>Danke! Dein Stein ist abgeschickt.</h2>
         <p>Du kannst deinen Stein bis zur Frist ändern und neu absenden. Es gilt immer die letzte Fassung.</p>
         <p>Dein Stein wird nicht verschickt. Er wird graviert und im Neubau des TSV eingemauert. Dort kannst du ihn später besuchen.</p>
+        <p>Wir schicken dir gleich eine Bestätigung per E-Mail.</p>
+        <button class="btn" type="button" id="sendDlgPdf">Meinen Stein als PDF speichern</button>
+        <p class="small" id="sendDlgPdfStatus" aria-live="polite"></p>
         <button class="btn btn-primary" type="button" id="sendDlgClose">Schließen</button>
       </div>
     </div>
@@ -1254,6 +1258,10 @@ function goStart() {
   const prev = standardDesign(S.stein || 'TEST', S.name || 'Dein Name'); S.startDesign = prev;
   $('#startPreview').innerHTML = brickSvg(prev);
   $('#goDraft').hidden = !readDraft();
+  // Auf diesem Gerät schon abgeschickt? Dann den Stein samt PDF wieder anbieten.
+  let ges = null; try { ges = S.stein ? localStorage.getItem('tsv-stein-gesendet-' + S.stein) : null; } catch (e) { }
+  $('#goGesendet').hidden = !ges;
+  $('#goGesendet').onclick = async () => { try { await goAnsicht(ges); $('#anLogin').textContent = 'Zurück zum Start'; $('#anLogin').onclick = () => goStart(); } catch (e) { $('#goGesendet').hidden = true; } };
   show('scrStart');
 }
 
@@ -1598,7 +1606,7 @@ async function prepareSend() {
     // Lesbare Zusammenfassung und (bei kurzen Entwürfen) ein Link, der den Stein samt PDF wieder anzeigt
     const inhalt = summaryRows(S.design).map(([a, b]) => a + ': ' + b).join('\n');
     // Nur der Schlüssel: Die Bestätigungs-E-Mail setzt ihn hinter die feste Adresse und zeigt einen Knopf statt eines langen Links
-    const ansicht = packed.length <= 1800 ? packed : '';
+    const ansicht = packed.length <= 1800 ? packed : ''; S.sendPacked = packed;
     S.sendBody = JSON.stringify({ SingleLine: S.code, SingleLine1: S.stein, SingleLine2: (S.name || '').slice(0, 250), SingleLine3: '1', SingleLine4: logo, MultiLine: packed, MultiLine1: inhalt, MultiLine2: ansicht, Email: S.mail || '' });
     a.href = '#'; a.setAttribute('aria-disabled', 'false');
   } catch (e) { $('#sendStatus').textContent = 'Das Absenden ließ sich nicht vorbereiten. Bitte lade die Seite neu.'; }
@@ -2014,12 +2022,15 @@ function wire() {
     S.sending = true; a.setAttribute('aria-disabled', 'true'); const label = a.textContent; a.textContent = 'Wird gesendet …'; st.textContent = '';
     try {
       await fetch(SEND_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: S.sendBody });
+      try { localStorage.setItem('tsv-stein-gesendet-' + S.stein, S.sendPacked); } catch (e2) { }
+      $('#sendDlgPdfStatus').textContent = '';
       $('#sendDlg').hidden = false; $('#sendDlg').scrollTop = 0;
     } catch (e) {
       st.innerHTML = '<span class="msg err" style="display:block"><b>Das Absenden hat nicht geklappt.</b> Prüfe deine Internetverbindung und tippe noch einmal auf den roten Knopf.</span>';
     }
     a.textContent = label; a.setAttribute('aria-disabled', 'false'); S.sending = false;
   }
+  $('#sendDlgPdf').onclick = async () => { const st = $('#sendDlgPdfStatus'), d = S.design; try { st.textContent = 'PDF wird erstellt …'; const r = await saveFile(fileBase(d) + '.pdf', designPdf(d).output('arraybuffer'), 'application/pdf'); st.textContent = r === 'ok' ? 'PDF gespeichert.' : 'PDF nicht gespeichert.'; } catch (e) { st.textContent = 'Das Speichern hat nicht geklappt.'; } };
   $('#sendDlgClose').onclick = () => { $('#sendDlg').hidden = true; $('#sendStatus').innerHTML = '<span class="msg" style="display:block"><b>Abgeschickt.</b> Du kannst deinen Stein bis zur Frist ändern und neu absenden.</span>'; };
   $('#loginForm').addEventListener('submit', doLogin);
   $('#goTest').onclick = () => goStart();
