@@ -554,7 +554,7 @@ const ANSICHT_URL = 'https://stein.zukunft-vereint.de/';
 const SEND_URL = 'https://forms.zohopublic.eu/TSVvon1908Grossenkneten/form/SteinDesignerEingang/formperma/pqI0AHLW86hBNiRrfETcAbjm3vjmQfCyP1huticq6gc/records';
 /* Zugangsliste: nur verschlüsselte Einträge. Ohne passenden Code UND passende E-Mail-Adresse
    lässt sich kein Eintrag lesen. Erzeugt im Sammelmodus unter "Zugangscodes erzeugen". */
-const ZUGANG = {"v":1,"salt":"SdzVBGUwIGA2aAvylRwQaQ","it1":60000,"it2":150000,"e":{"wpuhLCCr5QqorNn8":["Z_727IRNn23-O339","tJN-Kb1w1FB42ZxU_bIOyKWt9gD7g0lWheqXV6owZbENr6BKJQmrOnmwk33_6Y8Rrg"]}};
+const ZUGANG = {"v":1,"salt":"CXeyIdzP5V1-fz1FLpGaHg","it1":60000,"it2":150000,"e":{"06-l3zk1rpkrimkl":["aZSSgvBr1vktohIa","rDbqQTueMHLC4QrtQGtJuXpKEVnWUgJMO_Wr6x4qGjOgdYwc4szFM98CX_jtG9yUDQ"]}};
 /* Nur in der privaten Übersichtsseite gefüllt (Teilnehmerliste mit Codes). In der öffentlichen Seite immer null. */
 const ZENTRALE = /*ZENTRALE*/null/*ENDE*/;
 const CODE_ZEICHEN ='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -1229,7 +1229,12 @@ function renderHeaderInfo() {
 function goLogin() {
   S.admin = false; $('#steinInfo').innerHTML = ''; $('#footTest').hidden = true;
   $('#loginPreview').innerHTML = brickSvg(standardDesign('TEST', 'Dein Name'));
-  $('#loginMsg').textContent = ''; show('scrLogin');
+  $('#loginMsg').textContent = '';
+  // Der Link aus der Einladung bringt den Code mit (#code=XXXX-XXXX). Dann fehlt nur noch die E-Mail-Adresse.
+  const lc = /^#code=([A-Za-z0-9-]{8,9})$/.exec(location.hash || '');
+  if (lc) { $('#inCode').value = lc[1].toUpperCase(); try { history.replaceState(null, '', location.pathname); } catch (e) { } }
+  show('scrLogin');
+  if (lc) setTimeout(() => { try { $('#inMail').focus(); } catch (e) { } }, 50);
 }
 async function doLogin(e) {
   e.preventDefault();
