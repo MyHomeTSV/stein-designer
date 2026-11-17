@@ -413,8 +413,13 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
       <dl class="summary" id="pfSummary"></dl>
     </div>
     <div class="msgs" id="pfMsgs"></div>
-    <label class="check card" for="chkOk" style="flex-direction:row"><input type="checkbox" id="chkOk"><span>Ich habe Rechtschreibung und Inhalt geprüft. So soll mein Stein graviert werden.</span></label>
-    <div class="note" style="border-style:solid"><span id="sendNote"></span></div>
+    <div id="sentBox" hidden style="background:#161616;color:#fff;border-radius:10px;border-left:8px solid #E3001B;padding:16px 16px 16px 14px;font-size:16px;line-height:1.45">
+      <div style="font-size:21px;font-weight:700;line-height:1.25">&#10003; Dein Stein ist abgeschickt</div>
+      <div style="margin-top:8px"><span id="sentTime"></span>Er ist bei uns angekommen. Du musst nichts weiter tun. Wir schicken dir eine Bestätigung per E-Mail.</div>
+      <div style="margin-top:8px;color:#d0d0d0;font-size:15px">Du möchtest noch etwas ändern? Geh zurück, ändere deinen Stein und sende ihn neu ab. Es gilt immer die letzte Fassung.</div>
+    </div>
+    <label class="check card" id="chkWrap" for="chkOk" style="flex-direction:row"><input type="checkbox" id="chkOk"><span>Ich habe Rechtschreibung und Inhalt geprüft. So soll mein Stein graviert werden.</span></label>
+    <div class="note" id="sendNoteBox" style="border-style:solid"><span id="sendNote"></span></div>
     <a class="btn btn-primary" id="btnSend" href="#" role="button" aria-disabled="true">Jetzt absenden</a>
     <p class="small" id="sendStatus" aria-live="polite"></p>
     <button class="btn btn-link" id="btnDownload" type="button" disabled>Kopie als PDF für dich herunterladen</button>
@@ -1598,7 +1603,18 @@ function goPruefen() {
     ? '<b>Noch ist nichts abgeschickt.</b> Setze das Häkchen und tippe auf „Jetzt absenden“. Dann ist dein Stein bei uns.' +
       '<br><br><b>Gut zu wissen:</b> Dein Stein wird nicht verschickt. Er wird graviert und im Neubau des TSV eingemauert. Dort kannst du ihn später besuchen.'
     : '<b>Testmodus:</b> Du bist nicht angemeldet und kannst deshalb nichts absenden.';
+  setSent(false);
+  // Genau diese Fassung ist schon abgeschickt: Dann zeigt die Seite das auch.
+  if (S.sentPacked) packDesign(d).then(p => { if (p === S.sentPacked && S.design === d) setSent(true); }).catch(() => { });
   show('scrPruefen');
+}
+/* Prüfen-Seite: Zustand „abgeschickt“ deutlich zeigen, damit niemand zweifelt oder doppelt sendet */
+function setSent(on) {
+  $('#sentBox').hidden = !on; $('#chkWrap').hidden = on; $('#sendNoteBox').hidden = on; $('#btnSend').hidden = on;
+  if (!on) return;
+  $('#sendStatus').textContent = ''; $('#btnDownload').disabled = false;
+  $('#sentTime').textContent = S.sentAt ? 'Abgeschickt um ' + S.sentAt + ' Uhr. ' : '';
+  $('#pfStep').innerHTML = '<b>Fertig</b> Dein Stein ist abgeschickt';
 }
 async function prepareSend() {
   const a = $('#btnSend'), ok = $('#chkOk').checked && S.code && !renderDesign(S.design).errors.length;
@@ -2029,6 +2045,8 @@ function wire() {
       await fetch(SEND_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: S.sendBody });
       try { localStorage.setItem('tsv-stein-gesendet-' + S.stein, S.sendPacked); } catch (e2) { }
       $('#sendDlgPdfStatus').textContent = '';
+      S.sentPacked = S.sendPacked; S.sentAt = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      a.textContent = label; setSent(true);
       $('#sendDlg').hidden = false; $('#sendDlg').scrollTop = 0;
     } catch (e) {
       st.innerHTML = '<span class="msg err" style="display:block"><b>Das Absenden hat nicht geklappt.</b> Prüfe deine Internetverbindung und tippe noch einmal auf den roten Knopf.</span>';
@@ -2036,7 +2054,7 @@ function wire() {
     a.textContent = label; a.setAttribute('aria-disabled', 'false'); S.sending = false;
   }
   $('#sendDlgPdf').onclick = async () => { const st = $('#sendDlgPdfStatus'), d = S.design; try { st.textContent = 'PDF wird erstellt …'; const r = await saveFile(fileBase(d) + '.pdf', designPdf(d).output('arraybuffer'), 'application/pdf'); st.textContent = r === 'ok' ? 'PDF gespeichert.' : 'PDF nicht gespeichert.'; } catch (e) { st.textContent = 'Das Speichern hat nicht geklappt.'; } };
-  $('#sendDlgClose').onclick = () => { $('#sendDlg').hidden = true; $('#sendStatus').innerHTML = '<span class="msg" style="display:block"><b>Abgeschickt.</b> Du kannst deinen Stein bis zur Frist ändern und neu absenden.</span>'; };
+  $('#sendDlgClose').onclick = () => { $('#sendDlg').hidden = true; $('#sentBox').scrollIntoView({ block: 'center' }); };
   $('#loginForm').addEventListener('submit', doLogin);
   $('#goTest').onclick = () => goStart();
   document.addEventListener('click', e => { if (e.target.closest('#btnLogout')) doLogout(); if (e.target.closest('#btnToLogin')) goLogin(); });
