@@ -420,6 +420,22 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
     <p class="small" id="dlStatus" aria-live="polite"></p>
   </section>
 
+  <!-- ANSICHT (Link aus der Bestätigungs-E-Mail) -->
+  <section id="scrAnsicht" hidden>
+    <h1>Dein Stein</h1>
+    <p>So hast du deinen Stein abgeschickt. Jeder Ziegel ist ein Einzelstück. Farbton und Struktur können beim echten Stein etwas anders aussehen.</p>
+    <div class="stoneBox shadow" id="anPreview"></div>
+    <div class="card">
+      <h3>Gravurvorlage</h3>
+      <p class="muted small">Schwarz wird graviert.</p>
+      <div class="bw" id="anBw" style="max-width:360px"></div>
+      <dl class="summary" id="anSummary"></dl>
+    </div>
+    <button class="btn btn-primary" type="button" id="anPdf">Als PDF speichern</button>
+    <p class="small" id="anStatus" aria-live="polite"></p>
+    <div class="actions"><button class="btn" type="button" id="anLogin">Stein noch ändern: zur Anmeldung</button></div>
+  </section>
+
   <!-- SAMMELMODUS -->
   <section id="scrAdmin" hidden>
     <h2 id="adTitle">Sammelmodus</h2>
@@ -427,7 +443,8 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
     <div class="card" id="zCard" hidden>
       <h3>Teilnehmer und Rückmeldungen</h3>
       <div class="stats" id="zStats"></div>
-      <div class="actions"><button class="btn btn-primary" id="btnTally" type="button">Einreichungen aus Tally laden</button></div>
+      <p class="small"><b>So holst du die Einsendungen:</b> Öffne in Zoho Forms das Formular „Stein-Designer Eingang“, dann „Alle Einträge“. Tippe auf „Exportieren“ und wähle CSV. Lies die Datei hier ein.</p>
+      <div class="actions"><button class="btn btn-primary" id="btnZoho" type="button">Liste aus Zoho Forms einlesen</button><input type="file" id="inZoho" accept=".csv,text/csv,text/plain" hidden></div>
       <p class="small" id="zStatus" aria-live="polite"></p>
       <div style="overflow-x:auto"><table class="ztab" id="zTab"></table></div>
       <div id="zMail" hidden style="display:flex;flex-direction:column;gap:8px">
@@ -528,6 +545,7 @@ const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf
 const BEISPIEL_CSV = 'stein,name\nST-001,Familie Meyer\nST-002,Familie Hinrichs-Oltmanns aus Döhlen\nST-003,Autohaus Wilkens GmbH\nST-004,1. Herren TSV Großenkneten\nST-005,Oma Gerda und Opa Heinz\n';
 /* Einreichung: Tally-Formular "Dein Stein für den Verein – Gestaltung absenden" */
 const TALLY_URL = 'https://tally.so/r/db022V';
+const ANSICHT_URL = 'https://stein.zukunft-vereint.de/';
 // Eingangsformular des Vereins (Zoho Forms). Dorthin sendet der Knopf „Jetzt absenden“.
 const SEND_URL = 'https://forms.zohopublic.eu/TSVvon1908Grossenkneten/form/SteinDesignerEingang/formperma/pqI0AHLW86hBNiRrfETcAbjm3vjmQfCyP1huticq6gc/records';
 /* Zugangsliste: nur verschlüsselte Einträge. Ohne passenden Code UND passende E-Mail-Adresse
@@ -1577,9 +1595,35 @@ async function prepareSend() {
     const packed = await packDesign(S.design);
     // Das Eingangsformular nimmt höchstens rund 65.000 Zeichen an. Größeres würde still verloren gehen.
     if (packed.length > 60000) { S.sendBody = null; a.setAttribute('aria-disabled', 'true'); $('#sendStatus').innerHTML = '<span class="msg err" style="display:block"><b>Dein Logo ist zum Absenden zu groß.</b> Bitte nimm ein einfacheres Logo oder schreib uns an crowdfunding@tsv-grossenkneten.de.</span>'; return; }
-    S.sendBody = JSON.stringify({ SingleLine: S.code, SingleLine1: S.stein, SingleLine2: (S.name || '').slice(0, 250), SingleLine3: '1', SingleLine4: logo, MultiLine: packed });
+    // Lesbare Zusammenfassung und (bei kurzen Entwürfen) ein Link, der den Stein samt PDF wieder anzeigt
+    const inhalt = summaryRows(S.design).map(([a, b]) => a + ': ' + b).join('\n');
+    const ansicht = packed.length <= 1800 ? ANSICHT_URL + '#ansicht=' + packed : '';
+    S.sendBody = JSON.stringify({ SingleLine: S.code, SingleLine1: S.stein, SingleLine2: (S.name || '').slice(0, 250), SingleLine3: '1', SingleLine4: logo, MultiLine: packed, MultiLine1: inhalt, MultiLine2: ansicht, Email: S.mail || '' });
     a.href = '#'; a.setAttribute('aria-disabled', 'false');
   } catch (e) { $('#sendStatus').textContent = 'Das Absenden ließ sich nicht vorbereiten. Bitte lade die Seite neu.'; }
+}
+/* Was auf dem Stein steht, als lesbare Zeilen (für die Einsendung, die E-Mail und die Ansicht) */
+function summaryRows(d) {
+  const rows = [['Stein', d.stein + (d.nameAusLink ? ' · ' + d.nameAusLink : '')], ['Vorlage', VORLAGE_NAME[d.vorlage]]];
+  if (d.vorlage !== 'logo') {
+    rows.push(['Schrift', FONT_INFO[d.schrift].label]);
+    d.zeilen.forEach((z, i) => { if (z.text.trim() && !z.liste) rows.push([`Zeile ${i + 1}`, `${z.text}${z.zusatz ? '  ' + z.zusatz : ''}`]); });
+    if (d.zeilen.find(z => z.liste) && d.namensliste && d.namensliste.text) rows.push(['Namensliste', d.namensliste.text.replace(/\s*\n\s*/g, ', ')]);
+  }
+  if (artFor(d.vorlage) === 'logo' && d.logo) rows.push(['Logo', d.logo.dateiname || 'eigenes Logo']);
+  if (artFor(d.vorlage) === 'wappen') rows.push(['Grafik', 'TSV-Wappen']);
+  return rows;
+}
+/* Ansicht über den Link aus der Bestätigungs-E-Mail: Stein zeigen und PDF anbieten, ohne Anmeldung */
+async function goAnsicht(packed) {
+  const d = importDesign(await unpackDesign(packed)); await ensureBitmaps(d); S.design = d;
+  const r = renderDesign(d);
+  $('#steinInfo').innerHTML = ''; $('#footTest').hidden = true;
+  $('#anPreview').innerHTML = brickSvg(d, { render: r }); $('#anBw').innerHTML = bwSvg(d, r);
+  $('#anSummary').innerHTML = summaryRows(d).map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
+  $('#anPdf').onclick = async () => { const st = $('#anStatus'); try { st.textContent = 'PDF wird erstellt …'; const res = await saveFile(fileBase(d) + '.pdf', designPdf(d).output('arraybuffer'), 'application/pdf'); st.textContent = res === 'ok' ? 'PDF gespeichert.' : 'PDF nicht gespeichert.'; } catch (e) { st.textContent = 'Das Speichern hat nicht geklappt.'; } };
+  $('#anLogin').onclick = () => { history.replaceState(null, '', location.pathname); S.design = null; goLogin(); };
+  show('scrAnsicht');
 }
 async function doDownload() {
   const d = S.design, base = fileBase(d), st = $('#dlStatus'); $('#btnDownload').disabled = true;
@@ -1736,7 +1780,7 @@ async function zUebernehme(subs) {
       const o = await unpackDesign(f.design), d = importDesign(o); await ensureBitmaps(d);
       const t = ZENTRALE.teilnehmer.find(x => x.stein === d.stein), hin = [];
       if (!t) hin.push('Steinnummer unbekannt'); else if (normCode(f.code) !== normCode(t.code)) hin.push('Code passt nicht zur Steinnummer');
-      if (o.logo && o.logo.perUpload) hin.push('Eigenes Logo: Datei liegt in Tally und muss noch eingesetzt werden');
+      if (o.logo && o.logo.perUpload) hin.push('Eigenes Logo: Originaldatei fehlt, bitte beim Käufer anfragen');
       if (t && normCode(f.code) === normCode(t.code)) { d.nameAusLink = t.name; AD.submitted.set(d.stein, d); }
       const dt = f.am ? new Date(f.am) : null;
       ZS.info[d.stein] = { am: dt && !isNaN(dt) ? dt.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '', hinweis: hin.join('. '), nachricht: f.nachricht };
@@ -1746,8 +1790,39 @@ async function zUebernehme(subs) {
   ZS.geladen = new Date().toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
   zRender(); rebuildAdmin(); return { ok, bad, ohne: subs.length - list.length };
 }
+/* CSV-Export aus Zoho Forms lesen: Trennzeichen Komma oder Semikolon, Anführungszeichen, Zeilenumbrüche in Feldern */
+function zCsv(text) {
+  text = String(text).replace(/^﻿/, '');
+  const first = text.split(/\r?\n/)[0] || '', sep = (first.split(';').length > first.split(',').length) ? ';' : ',';
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === sep) { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; if (row.some(x => x.trim())) rows.push(row); row = []; }
+    else cur += c;
+  }
+  row.push(cur); if (row.some(x => x.trim())) rows.push(row);
+  return rows;
+}
+async function zLadeZoho(file) {
+  const st = $('#zStatus'); st.textContent = 'Die Liste wird eingelesen …';
+  try {
+    const rows = zCsv(await file.text()); if (rows.length < 2) { st.textContent = 'In der Datei stehen keine Einsendungen.'; return; }
+    const head = rows[0].map(h => h.trim().toLowerCase()), col = n => head.indexOf(n);
+    const iZeit = head.findIndex(h => /hinzuf|added time|zeit/.test(h));
+    if (col('design') < 0 || col('stein') < 0) { st.textContent = 'Das ist nicht die Liste aus dem Formular „Stein-Designer Eingang“. Es fehlen die Spalten stein und design.'; return; }
+    const subs = rows.slice(1).map(r => {
+      let am = iZeit >= 0 ? (r[iZeit] || '').trim() : ''; const dt = am ? new Date(am.replace(/^(\d{1,2})-([A-Za-zä]{3})[a-z]*-(\d{4})/, '$1 $2 $3').replace(/Mrz|Mär/, 'Mar').replace('Mai', 'May').replace('Okt', 'Oct').replace('Dez', 'Dec')) : null;
+      return { code: (r[col('code')] || '').trim(), stein: (r[col('stein')] || '').trim(), name: (r[col('name')] || '').trim(), v: (r[col('v')] || '').trim(), design: (r[col('design')] || '').trim(), submittedAt: dt && !isNaN(dt) ? dt.toISOString() : am };
+    }).filter(s => /^z1\./.test(s.design) && !/^TEST-/i.test(s.code));
+    const res = await zUebernehme(subs);
+    st.textContent = `${rows.length - 1} Zeile${rows.length === 2 ? '' : 'n'} in der Liste, ${res.ok} Einsendung${res.ok === 1 ? '' : 'en'} übernommen` + (res.bad ? `, ${res.bad} nicht lesbar` : '') + '. Bei mehreren Einsendungen zu einem Stein gilt die letzte.';
+  } catch (e) { st.textContent = 'Das Einlesen hat nicht geklappt: ' + ((e && e.message) || e); }
+}
 async function zLadeTally() {
-  const st = $('#zStatus'); st.textContent = 'Einreichungen werden geladen …'; $('#btnTally').disabled = true;
+  const st = $('#zStatus'); st.textContent = 'Einreichungen werden geladen …';
   try {
     const mcp = (window.claude && typeof window.claude.use === 'function') ? await window.claude.use('mcp') : null;
     if (!mcp) { st.textContent = 'Die Verbindung zu Tally gibt es in dieser Ansicht nicht. Öffne die Übersicht in claude.ai.'; return; }
@@ -1768,7 +1843,7 @@ async function zLadeTally() {
       c === 'server_unavailable' ? 'Tally antwortet gerade nicht. Versuch es gleich noch einmal.' :
       ['capability_disabled', 'capability_removed'].includes(c) ? 'Die Verbindung zu Tally gibt es in dieser Ansicht nicht.' :
       'Das Laden hat nicht geklappt: ' + ((e && e.message) || c || e);
-  } finally { $('#btnTally').disabled = false; }
+  }
 }
 
 /* ============================================================
@@ -1961,7 +2036,8 @@ function wire() {
   $('#btnZip').onclick = doZip;
   $('#btnOverview').onclick = doOverview;
   $('#adExit').onclick = () => { S.admin = false; goStart(); };
-  $('#btnTally').onclick = zLadeTally;
+  $('#btnZoho').onclick = () => $('#inZoho').click();
+  $('#inZoho').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) zLadeZoho(f); };
   $('#zTab').addEventListener('click', e => {
     const b = e.target.closest('[data-zmail]'); if (!b) return; const t = ZENTRALE.teilnehmer[+b.dataset.zmail];
     $('#zMail').hidden = false; $('#zMailTo').textContent = t.name; $('#zMailText').value = zMailText(t); $('#zMailMsg').textContent = '';
@@ -2027,7 +2103,10 @@ async function ensureLogoSrc() {
     loadFonts(); await loadWappen(); wire();
     try { const b = atob(ZIEGEL_FOTO.split(',')[1]), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); S.photo = URL.createObjectURL(new Blob([u], { type: 'image/jpeg' })); } catch (e) { }
     $('#bootMsg').remove();
-    if (ZENTRALE) goAdmin(); else if (ladeLogin()) goStart(); else goLogin();
+    const an = /^#ansicht=(z1\..+)$/.exec(location.hash || '');
+    if (ZENTRALE) goAdmin();
+    else if (an) { try { await goAnsicht(decodeURIComponent(an[1])); } catch (e) { goLogin(); } }
+    else if (ladeLogin()) goStart(); else goLogin();
   } catch (e) {
     $('#bootMsg').className = 'err-box'; $('#bootMsg').textContent = 'Der Stein-Designer konnte nicht starten. Prüfe deine Internetverbindung und lade die Seite neu. (' + (e && e.message || e) + ')';
   }
