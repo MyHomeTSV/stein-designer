@@ -2115,7 +2115,9 @@ async function ensureLogoSrc() {
     loadFonts(); await loadWappen(); wire();
     try { const b = atob(ZIEGEL_FOTO.split(',')[1]), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); S.photo = URL.createObjectURL(new Blob([u], { type: 'image/jpeg' })); } catch (e) { }
     $('#bootMsg').remove();
-    const an = /^#ansicht=(z1\..+)$/.exec(location.hash || '');
+    // Der Knopf in der Bestätigungs-E-Mail hängt den Schlüssel als ?ansicht=… an die Adresse (älter: #ansicht=…)
+    let an = /^#ansicht=(z1\..+)$/.exec(location.hash || '');
+    if (!an) { const q = new URLSearchParams(location.search).get('ansicht'); if (q && /^z1\./.test(q.trim())) { an = [null, q.trim()]; try { history.replaceState(null, '', location.pathname); } catch (e) { } } }
     if (ZENTRALE) goAdmin();
     else if (an) { try { await goAnsicht(decodeURIComponent(an[1])); } catch (e) { goLogin(); } }
     else if (ladeLogin()) goStart(); else goLogin();
