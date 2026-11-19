@@ -282,7 +282,7 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
       <textarea id="inT3" rows="3" maxlength="800" autocomplete="off" placeholder="z. B. Alex, Andre, Elias, Finn, Floris, Frederik"></textarea>
       <span class="h" id="namesCount"></span>
     </label>
-    <div class="card" id="rowSep" hidden style="gap:8px"><span class="optl">So trennen wir die Namen auf dem Stein</span>
+    <div class="card" id="rowSep" hidden style="gap:8px"><span class="optl" style="flex:none">So trennen wir die Namen auf dem Stein</span>
       <div class="seg" id="segSugSep">
         <button type="button" data-v="" aria-pressed="true">wie eingegeben</button><button type="button" data-v="komma">Anna, Tom und Lisa</button><button type="button" data-v="punkt">Anna · Tom · Lisa</button><button type="button" data-v="strich">Anna – Tom – Lisa</button><button type="button" data-v="leer">Anna Tom Lisa</button>
       </div>
@@ -357,7 +357,7 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
       <div class="msg" id="edNamesNote" hidden></div>
       <label class="f" for="edNames"><span class="h">Zum Beispiel alle Spielerinnen und Spieler. Trenne die Namen mit Komma oder schreib jeden Namen in eine neue Zeile. Wir verteilen sie automatisch unter deinen Text, so groß wie möglich und mindestens 5 mm hoch.</span>
         <textarea id="edNames" rows="3" maxlength="800" autocomplete="off" placeholder="z. B. Alex, Andre, Elias, Finn, Floris, Frederik"></textarea></label>
-      <div class="row" id="edNamesSepRow"><span class="optl">So trennen wir die Namen auf dem Stein</span>
+      <div class="row" id="edNamesSepRow"><span class="optl" style="flex:1 0 100%">So trennen wir die Namen auf dem Stein</span>
         <div class="seg" id="segEdSep">
           <button type="button" data-v="" aria-pressed="true">wie eingegeben</button><button type="button" data-v="komma">Anna, Tom und Lisa</button><button type="button" data-v="punkt">Anna · Tom · Lisa</button><button type="button" data-v="strich">Anna – Tom – Lisa</button><button type="button" data-v="leer">Anna Tom Lisa</button>
         </div>
@@ -992,7 +992,7 @@ function parseNames(t) {
   t = String(t || '').trim(); if (!t) return { parts: [], joiner: ' · ' };
   const joiner = /·|•/.test(t) ? ' · ' : /,|;/.test(t) ? ', ' : /\s[–-]\s/.test(t) ? ' – ' : ' · ';
   let parts = t.split(/\s*(?:\n|,|;|·|•|\/|\|)\s*|\s+[-–]\s+|\s+(?:und|&)\s+/i).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  if (parts.length < 2) { const w = t.replace(/\s+/g, ' ').split(' '); if (w.length >= 3 && w.every(x => /^[A-ZÄÖÜ]/.test(x))) parts = w; }
+  if (parts.length < 2) { const w = t.replace(/\s+/g, ' ').split(' '); if (w.length >= 3 && w.every(x => /^[A-Za-zÄÖÜäöüßÀ-ÿ][A-Za-zÄÖÜäöüßÀ-ÿ'’.-]*$/.test(x))) parts = w; }
   return { parts, joiner };
 }
 function makeJoinLine(sep, detected) {
