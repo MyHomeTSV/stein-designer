@@ -344,6 +344,7 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
 
     <div class="card" id="secText">
       <h3>Text</h3>
+      <p class="small muted" style="margin:0">Viele Namen, zum Beispiel eine Mannschaft? Tipp sie nicht einzeln in die Zeilen. <button type="button" class="btn btn-link" id="toNames" style="min-height:32px;padding:0 2px">Nimm die Namensliste</button>. Dort gibst du alle Namen mit Komma ein und wir verteilen sie automatisch.</p>
       <div id="lineFields" style="display:flex;flex-direction:column;gap:12px"></div>
       <div class="row">
         <button class="btn btn-sm" id="btnAddLine" type="button">Zeile hinzufügen</button>
@@ -632,11 +633,41 @@ function speichereLogin() { try { sessionStorage.setItem('tsv-stein-login', JSON
 function ladeLogin() { try { const o = JSON.parse(sessionStorage.getItem('tsv-stein-login') || 'null'); if (o && o.code && o.stein) { Object.assign(S, o); return true; } } catch (e) { } return false; }
 
 /* ---------- Design kompakt für den Tally-Link ---------- */
-async function packDesign(d) {
+/* Das Logo reist als Schwarz-Weiß-Raster mit: 1 Bit je Bildpunkt, zusammengedrückt. So passt es in die Einsendung. */
+async function deflateB64(u8) { return b64uEnc(await new Response(new Blob([u8]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()); }
+async function inflateB64(s) { return new Uint8Array(await new Response(new Blob([b64uDec(s)]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()); }
+function bmpScale(b, max) {
+  const s = Math.min(1, max / Math.max(b.w, b.h)); if (s >= 1) return b;
+  const w = Math.max(1, Math.round(b.w * s)), h = Math.max(1, Math.round(b.h * s)), d = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) { const y0 = Math.floor(y * b.h / h), y1 = Math.max(y0 + 1, Math.floor((y + 1) * b.h / h));
+    for (let x = 0; x < w; x++) { const x0 = Math.floor(x * b.w / w), x1 = Math.max(x0 + 1, Math.floor((x + 1) * b.w / w)); let on = 0;
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) on += b.d[yy * b.w + xx];
+      if (on * 2 >= (y1 - y0) * (x1 - x0)) d[y * w + x] = 1; } }
+  return { w, h, d };
+}
+async function logoBits(b) {
+  const row = Math.ceil(b.w / 8), u = new Uint8Array(row * b.h);
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if (b.d[y * b.w + x]) u[y * row + (x >> 3)] |= 128 >> (x & 7);
+  return { w: b.w, h: b.h, z: await deflateB64(u) };
+}
+/* Gegenstück: macht aus dem mitgeschickten Raster wieder ein Logo, das der Designer zeichnen kann. */
+async function restoreLogo(o) {
+  const L = o && o.logo; if (!L || L.mono || !L.bits || !L.bits.z) return o;
+  const w = +L.bits.w, h = +L.bits.h; if (!(w > 0 && h > 0 && w * h <= 4e6)) return o;
+  const u = await inflateB64(L.bits.z), row = Math.ceil(w / 8), d = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (u[y * row + (x >> 3)] & (128 >> (x & 7))) d[y * w + x] = 1;
+  const b = { w, h, d }; L.mono = bmpToPng(b); BMP.set(L.mono, b); return o;
+}
+/* logoMax: längste Seite des mitgeschickten Logos in Bildpunkten. 0 = ohne Logo-Bild. */
+async function packDesign(d, logoMax) {
   const o = exportJson(d);
   ['hinweise', 'text_mm', 'stein_mm', 'gestaltungsflaeche_mm', 'erstellt'].forEach(k => delete o[k]);
   if (o.grafik) ['x', 'y', 'breite', 'hoehe'].forEach(k => delete o.grafik[k]);
-  if (o.logo) o.logo = { dateiname: o.logo.dateiname, schwelle: o.logo.schwelle, umkehren: !!o.logo.umkehren, pxBreite: o.logo.pxBreite, pxHoehe: o.logo.pxHoehe, foto: !!o.logo.foto, perUpload: true };
+  if (o.logo) {
+    const src = o.logo, b = logoMax === 0 ? null : (BMP.get(src.mono) || (src.mono ? await pngToBmp(src.mono) : null));
+    o.logo = { dateiname: src.dateiname, schwelle: src.schwelle, umkehren: !!src.umkehren, pxBreite: src.pxBreite, pxHoehe: src.pxHoehe, foto: !!src.foto };
+    if (b && b.w) o.logo.bits = await logoBits(bmpScale(b, logoMax || 1400)); else o.logo.perUpload = true;
+  }
   o.zeilen = o.zeilen.map(z => { const c = Object.assign({}, z); delete c.versalhoehe; return c; });
   const buf = await new Response(new Blob([TE.encode(JSON.stringify(o))]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
   return 'z1.' + b64uEnc(buf);
@@ -1621,13 +1652,17 @@ async function prepareSend() {
   if (!ok) { a.setAttribute('aria-disabled', 'true'); a.href = '#'; S.sendBody = null; return; }
   try {
     const logo = artFor(S.design.vorlage) === 'logo' && S.design.logo ? 'ja' : 'nein';
-    const packed = await packDesign(S.design);
+    let packed = await packDesign(S.design);
+    // Sehr detailreiche Logos schrittweise gröber mitschicken, bis die Einsendung passt
+    for (const m of [1000, 750, 550]) { if (packed.length <= 60000) break; packed = await packDesign(S.design, m); }
     // Das Eingangsformular nimmt höchstens rund 65.000 Zeichen an. Größeres würde still verloren gehen.
     if (packed.length > 60000) { S.sendBody = null; a.setAttribute('aria-disabled', 'true'); $('#sendStatus').innerHTML = '<span class="msg err" style="display:block"><b>Dein Logo ist zum Absenden zu groß.</b> Bitte nimm ein einfacheres Logo oder schreib uns an crowdfunding@tsv-grossenkneten.de.</span>'; return; }
     // Lesbare Zusammenfassung und (bei kurzen Entwürfen) ein Link, der den Stein samt PDF wieder anzeigt
     const inhalt = summaryRows(S.design).map(([a, b]) => a + ': ' + b).join('\n');
     // Nur der Schlüssel: Die Bestätigungs-E-Mail setzt ihn hinter die feste Adresse und zeigt einen Knopf statt eines langen Links
-    const ansicht = packed.length <= 1800 ? packed : ''; S.sendPacked = packed;
+    let ansicht = packed.length <= 2000 ? packed : ''; S.sendPacked = packed;
+    // Mit Logo ist der Schlüssel zu lang für den Knopf in der E-Mail: Dort reicht ein verkleinertes Logo für die Ansicht
+    if (!ansicht && logo === 'ja') for (const m of [260, 200, 150, 110, 0]) { const p = await packDesign(S.design, m); if (p.length <= 2000) { ansicht = p; break; } }
     S.sendBody = JSON.stringify({ SingleLine: S.code, SingleLine1: S.stein, SingleLine2: (S.name || '').slice(0, 250), SingleLine3: '1', SingleLine4: logo, MultiLine: packed, MultiLine1: inhalt, MultiLine2: ansicht, Email: S.mail || '' });
     a.href = '#'; a.setAttribute('aria-disabled', 'false');
   } catch (e) { $('#sendStatus').textContent = 'Das Absenden ließ sich nicht vorbereiten. Bitte lade die Seite neu.'; }
@@ -1646,7 +1681,7 @@ function summaryRows(d) {
 }
 /* Ansicht über den Link aus der Bestätigungs-E-Mail: Stein zeigen und PDF anbieten, ohne Anmeldung */
 async function goAnsicht(packed) {
-  const d = importDesign(await unpackDesign(packed)); await ensureBitmaps(d); S.design = d;
+  const d = importDesign(await restoreLogo(await unpackDesign(packed))); await ensureBitmaps(d); S.design = d;
   const r = renderDesign(d);
   $('#steinInfo').innerHTML = ''; $('#footTest').hidden = true;
   $('#anPreview').innerHTML = brickSvg(d, { render: r }); $('#anBw').innerHTML = bwSvg(d, r);
@@ -1807,7 +1842,7 @@ async function zUebernehme(subs) {
   let ok = 0, bad = 0;
   for (const f of list) {
     try {
-      const o = await unpackDesign(f.design), d = importDesign(o); await ensureBitmaps(d);
+      const o = await restoreLogo(await unpackDesign(f.design)), d = importDesign(o); await ensureBitmaps(d);
       const t = ZENTRALE.teilnehmer.find(x => x.stein === d.stein), hin = [];
       if (!t) hin.push('Steinnummer unbekannt'); else if (normCode(f.code) !== normCode(t.code)) hin.push('Code passt nicht zur Steinnummer');
       if (o.logo && o.logo.perUpload) hin.push('Eigenes Logo: Originaldatei fehlt, bitte beim Käufer anfragen');
@@ -2028,6 +2063,7 @@ function wire() {
   $('#btnPhotoOff').onclick = () => { S.photo = null; $('#inPhoto').value = ''; $('#btnPhotoOff').hidden = true; };
   $('#edBack').onclick = () => { if (S.from === 'vorschlag') goVorschlag(true); else goStart(); };
   $('#edNext').onclick = goPruefen;
+  $('#toNames').onclick = () => { $('#secNames').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('#edNames').focus({ preventScroll: true }); };
 
   // Prüfen
   $('#chkOk').onchange = e => { $('#btnDownload').disabled = !e.target.checked; prepareSend(); };
