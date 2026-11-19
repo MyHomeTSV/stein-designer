@@ -282,6 +282,11 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
       <textarea id="inT3" rows="3" maxlength="800" autocomplete="off" placeholder="z. B. Alex, Andre, Elias, Finn, Floris, Frederik"></textarea>
       <span class="h" id="namesCount"></span>
     </label>
+    <div class="card" id="rowSep" hidden style="gap:8px"><span class="optl">So trennen wir die Namen auf dem Stein</span>
+      <div class="seg" id="segSugSep">
+        <button type="button" data-v="" aria-pressed="true">wie eingegeben</button><button type="button" data-v="komma">Anna, Tom und Lisa</button><button type="button" data-v="punkt">Anna · Tom · Lisa</button><button type="button" data-v="strich">Anna – Tom – Lisa</button><button type="button" data-v="leer">Anna Tom Lisa</button>
+      </div>
+    </div>
     <div class="msg" id="splitNote" hidden></div>
     <p class="stepline"><b>Schritt 2 von 4</b> Aussehen wählen (optional)</p>
     <div class="card" id="sugOptions">
@@ -304,11 +309,6 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
       </div>
       <div class="opt"><span class="optl">Schreibweise</span>
         <div class="seg" id="segSugCaps"><button type="button" data-v="" aria-pressed="true">normal</button><button type="button" data-v="an">ALLES GROSS</button></div>
-      </div>
-      <div class="opt" id="rowSep"><span class="optl">Namen trennen mit</span>
-        <div class="seg" id="segSugSep">
-          <button type="button" data-v="" aria-pressed="true">wie eingegeben</button><button type="button" data-v="komma">Anna, Tom und Lisa</button><button type="button" data-v="punkt">Anna · Tom · Lisa</button><button type="button" data-v="strich">Anna – Tom – Lisa</button><button type="button" data-v="leer">Anna Tom Lisa</button>
-        </div>
       </div>
     </div>
     <p class="stepline"><b>Schritt 3 von 4</b> Wähle den Vorschlag, der dir am besten gefällt</p>
@@ -357,7 +357,7 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
       <div class="msg" id="edNamesNote" hidden></div>
       <label class="f" for="edNames"><span class="h">Zum Beispiel alle Spielerinnen und Spieler. Trenne die Namen mit Komma oder schreib jeden Namen in eine neue Zeile. Wir verteilen sie automatisch unter deinen Text, so groß wie möglich und mindestens 5 mm hoch.</span>
         <textarea id="edNames" rows="3" maxlength="800" autocomplete="off" placeholder="z. B. Alex, Andre, Elias, Finn, Floris, Frederik"></textarea></label>
-      <div class="row" id="edNamesSepRow"><span>Namen trennen mit</span>
+      <div class="row" id="edNamesSepRow"><span class="optl">So trennen wir die Namen auf dem Stein</span>
         <div class="seg" id="segEdSep">
           <button type="button" data-v="" aria-pressed="true">wie eingegeben</button><button type="button" data-v="komma">Anna, Tom und Lisa</button><button type="button" data-v="punkt">Anna · Tom · Lisa</button><button type="button" data-v="strich">Anna – Tom – Lisa</button><button type="button" data-v="leer">Anna Tom Lisa</button>
         </div>
@@ -1044,6 +1044,13 @@ function autoSplit(t) {
   return m && m[1].trim() && m[2].trim() ? [m[1].trim(), m[2].trim()] : null;
 }
 const aktionLine = k => ({ text: AKTION, em: Math.ceil(5.6 / F[k].cap * 10) / 10 });
+/* Die Knöpfe zum Trennen zeigen die eigenen Namen als Beispiel, nicht „Anna, Tom und Lisa“ */
+function sepBeispiele(sel, parts) {
+  const n = (parts || []).slice(0, 3).map(s => String(s).trim()).filter(Boolean).map(s => s.length > 12 ? s.slice(0, 11) + '…' : s);
+  const p = n.length >= 2 ? n : ['Anna', 'Tom', 'Lisa'], mehr = (parts || []).length > 3 ? ' …' : '';
+  const txt = { komma: (p.length > 2 ? p.slice(0, -1).join(', ') + ' und ' + p[p.length - 1] : p.join(' und ')), punkt: p.join(' · '), strich: p.join(' – '), leer: p.join(' ') };
+  for (const b of document.querySelectorAll(sel + ' button')) if (txt[b.dataset.v]) b.textContent = txt[b.dataset.v] + (b.dataset.v === 'komma' ? '' : mehr);
+}
 /* Namensliste mit einheitlichem Trennzeichen schreiben */
 function formatNames(t, sep) {
   t = t.replace(/\s+/g, ' ').trim(); if (!sep || !t) return t;
@@ -1364,7 +1371,7 @@ function runSuggestions(typing) {
   let nm = parseNames(t3);
   if (nm.parts.length < 2) { const n2 = parseNames(t2); if (n2.parts.length >= 3) { nm = n2; t2 = ''; } }
   const hasNames = nm.parts.length >= 2;
-  $('#rowSep').hidden = !hasNames;
+  $('#rowSep').hidden = !hasNames; sepBeispiele('#segSugSep', nm.parts);
   $('#namesCount').textContent = nm.parts.length ? `${nm.parts.length} Name${nm.parts.length === 1 ? '' : 'n'} erkannt` : '';
   const pv = id => { const b = $(`#${id} button[aria-pressed=true]`); return b ? b.dataset.v : ''; };
   const names = hasNames ? { parts: nm.parts, joinLine: makeJoinLine(pv('segSugSep'), nm.joiner), sep: pv('segSugSep'), raw: (t3.trim() ? t3 : nm.parts.join(', ')).trim() } : null;
@@ -1509,7 +1516,7 @@ function refresh() {
     }
   });
   { const n = $('#edNamesNote'); if (n) { n.hidden = !S.listNote; n.textContent = S.listNote || ''; } S.listNote = S.listNote ? S.listNote : ''; }
-  { const l = d.zeilen.find(z => z.liste); $('#edNamesSizeRow').hidden = !l; $('#edNamesSepRow').hidden = !l || parseNames((d.namensliste || {}).text).parts.length < 2;
+  { const l = d.zeilen.find(z => z.liste); $('#edNamesSizeRow').hidden = !l; { const pn = parseNames((d.namensliste || {}).text).parts; $('#edNamesSepRow').hidden = !l || pn.length < 2; sepBeispiele('#segEdSep', pn); }
     if (l) { $('#outLSize').textContent = `${fmt(l.groesse * cap)} mm hoch`; $('#edNamesInfo').textContent = namesInfo(d); } }
   if ($('#outGap')) $('#outGap').textContent = `${fmt(d.grafik.abstand)} mm`;
   if ($('#outGSize')) $('#outGSize').textContent = `${fmt(d.grafik.groesse)} mm hoch`;
