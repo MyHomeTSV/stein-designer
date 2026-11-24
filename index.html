@@ -1,4 +1,4 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Stein-Designer</title>
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Stein-Designer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
@@ -163,6 +163,8 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
 .foot{font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 14px}
 .err-box{border:2px solid var(--red);border-radius:10px;padding:14px;background:var(--card)}
 #svgDefs{position:absolute;width:0;height:0;overflow:hidden}
+/* Stein-Bilder nie vom Handy umfärben lassen (manche Browser dunkeln Seiten von sich aus ab) */
+svg{color-scheme:only light;forced-color-adjust:none}
 .zoomable{cursor:zoom-in;position:relative}
 .zoomable::after{content:"Antippen zum Vergrößern";display:block;text-align:right;margin-top:4px;font-size:12px;color:var(--muted);pointer-events:none}
 #edPreview.zoomable::after{content:none}
