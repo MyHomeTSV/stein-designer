@@ -184,6 +184,8 @@ svg{color-scheme:only light;forced-color-adjust:none}
 .zoomBar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;position:sticky;top:0;z-index:2;background:#0d0d0d;padding:6px 0}
 .dlg{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.72);overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;padding:16px}
 .dlg[hidden]{display:none}
+.dlgBox .choice,.dlgBox .choice .t,.dlgBox .choice .s{text-align:left}
+.dlgBox .choice{align-items:flex-start}
 .dlgBox{--bg:#f2f2f1;--fg:#161616;--muted:#5b5b5b;--line:#d5d5d4;--soft:#e9e9e8;--card:#ffffff;--red-text:#c00017;background:#fff;color:#161616;border-radius:14px;border-top:8px solid #E3001B;width:100%;max-width:520px;margin:auto;padding:20px 18px;display:flex;flex-direction:column;gap:14px}
 .dlgBox h2{margin:0}
 .dlgBox p{margin:0}
@@ -507,6 +509,15 @@ svg{color-scheme:only light;forced-color-adjust:none}
 
   <div class="foot" id="footTest" hidden></div>
 </main>
+
+<div class="dlg" id="aendDlg" hidden role="dialog" aria-modal="true" aria-labelledby="aendDlgTitle">
+  <div class="dlgBox">
+    <h2 id="aendDlgTitle">Wie möchtest du deinen Stein ändern?</h2>
+    <button class="btn btn-primary choice" type="button" id="aendVorschlag"><span class="t">Neue Vorschläge mit meinem Text</span><span class="s">Dein Text ist schon eingetragen. Du kannst ihn ändern und bekommst vier neue Entwürfe.</span></button>
+    <button class="btn choice" type="button" id="aendSelbst"><span class="t">Selbst weiter anpassen</span><span class="s">Dein Stein öffnet sich so, wie du ihn abgeschickt hast. Du änderst Text, Schrift und Größe selbst.</span></button>
+    <button class="btn btn-link" type="button" id="aendAbbrechen">Abbrechen</button>
+  </div>
+</div>
 
 <div class="dlg" id="sendDlg" hidden role="dialog" aria-modal="true" aria-labelledby="sendDlgTitle">
   <div class="dlgBox">
@@ -1350,8 +1361,8 @@ async function doLogin(e) {
   speichereLogin(); $('#inT1').value = ''; $('#inT2').value = ''; $('#inT3').value = '';
   // Über „Meinen Stein ändern“ aus der Bestätigungs-E-Mail gekommen: den Stein gleich zum Ändern öffnen.
   const pe = S.pendingEdit; S.pendingEdit = null;
-  if (pe) { try { renderHeaderInfo(); await oeffneZumAendern(pe); return; } catch (err) { } }
   goStart();
+  if (pe) aendernWahl(pe);
 }
 /* Einen abgeschickten Stein (gepackt) im Editor öffnen. Nur der eigene Stein. */
 async function oeffneZumAendern(packed) {
@@ -1360,6 +1371,23 @@ async function oeffneZumAendern(packed) {
   if (S.stein) d.stein = S.stein;
   S.design = d; LOGO_SRC = null; S.from = 'start'; if (!S.sentPacked) S.sentPacked = packed;
   goEditor(false, 'Dein Stein');
+}
+/* Zwischenfrage nach „Meinen Stein ändern“: neue Vorschläge mit dem eigenen Text oder selbst weiter anpassen */
+function aendernWahl(packed) { S.aendPacked = packed; $('#aendDlg').hidden = false; document.body.style.overflow = 'hidden'; try { $('#aendVorschlag').focus(); } catch (e) { } }
+function aendernZu() { $('#aendDlg').hidden = true; document.body.style.overflow = ''; }
+/* Den abgeschickten Stein in den Weg „Mach mir einen Vorschlag“ übernehmen: Texte und Namensliste eintragen */
+async function oeffneVorschlagMit(packed) {
+  const d = importDesign(await restoreLogo(await unpackDesign(packed))); await ensureBitmaps(d);
+  if (S.stein && d.stein && d.stein !== S.stein) throw new Error('anderer Stein');
+  const zs = d.zeilen.filter(z => !z.liste && !z.fest && String(z.text || '').trim());
+  const titel = zs.filter(z => z.fett !== false), neben = zs.filter(z => z.fett === false);
+  $('#inT1').value = (titel.length ? titel : zs.slice(0, 1)).map(z => z.text.trim()).join(' ');
+  $('#inT2').value = ((zs.find(z => z.zusatz) || {}).zusatz || (titel.length && neben[0] ? neben[0].text : '') || '').trim();
+  $('#inT3').value = d.namensliste && d.namensliste.text ? d.namensliste.text : '';
+  try { const tr = (d.namensliste && d.namensliste.trenner) || ''; const b = [...document.querySelectorAll('#segSugSep button')].find(x => x.dataset.v === tr); if (b) seg($('#segSugSep'), tr); } catch (e) { }
+  if (d.logo && d.logo.mono) S.sugLogo = clone(d.logo);
+  S.design = null; S.sugIdx = -1; if (!S.sentPacked) S.sentPacked = packed;
+  goVorschlag(); runSuggestions(false);
 }
 function doLogout() {
   try { sessionStorage.removeItem('tsv-stein-login'); } catch (e) { }
@@ -1386,7 +1414,7 @@ function goStart() {
         S.startDesign = d; $('#startPreview').innerHTML = brickSvg(d);
         let z = ''; try { const t = localStorage.getItem('tsv-stein-gesendet-zeit-' + fuer), dt = t ? new Date(t) : null; if (dt && !isNaN(dt)) z = 'Abgeschickt am ' + dt.toLocaleDateString('de-DE', { day: 'numeric', month: 'long' }) + ' um ' + dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr. '; } catch (e) { }
         $('#startSentZeit').textContent = z; $('#startSent').hidden = false; $('#startIntro').hidden = true;
-        $('#goAendern').onclick = async () => { try { await oeffneZumAendern(ges); } catch (e) { $('#startSent').hidden = true; $('#startIntro').hidden = false; } };
+        $('#goAendern').onclick = () => aendernWahl(ges);
       } catch (e) { }
     })();
   }
@@ -1783,7 +1811,7 @@ async function goAnsicht(packed, vonMail) {
   /* „Meinen Stein ändern“: angemeldet geht es direkt in den Editor, sonst erst zur Anmeldung und danach in den Editor. */
   $('#anLogin').textContent = 'Meinen Stein ändern'; $('#anLogoHint').hidden = !(vonMail && d.logo);
   $('#anLogin').onclick = async () => {
-    if ((S.code || ladeLogin()) && S.stein === d.stein) { try { renderHeaderInfo(); await oeffneZumAendern(packed); return; } catch (e) { } }
+    if ((S.code || ladeLogin()) && S.stein === d.stein) { S.design = null; goStart(); aendernWahl(packed); return; }
     S.design = null; S.pendingEdit = packed; goLogin();
     const msg = $('#loginMsg'); msg.className = 'small'; msg.textContent = 'Melde dich an. Danach öffnet sich dein Stein zum Ändern.';
   };
@@ -2129,6 +2157,10 @@ function wire() {
   $('#edPreview').onclick = () => openZoom(S.design);
   $('#pfPreview').onclick = () => openZoom(S.design);
   $('#zoomClose').onclick = closeZoom;
+  $('#aendAbbrechen').onclick = aendernZu;
+  $('#aendDlg').addEventListener('click', e => { if (e.target === $('#aendDlg')) aendernZu(); });
+  $('#aendSelbst').onclick = async () => { aendernZu(); try { await oeffneZumAendern(S.aendPacked); } catch (e) { } };
+  $('#aendVorschlag').onclick = async () => { aendernZu(); try { await oeffneVorschlagMit(S.aendPacked); } catch (e) { try { await oeffneZumAendern(S.aendPacked); } catch (e2) { } } };
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#zoom').hidden) closeZoom(); });
   $('#segZoom').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; seg2($('#segZoom'), b); document.querySelectorAll('.zoomStone').forEach(z => z.style.width = (+b.dataset.z * 100) + '%'); });
   $('#sugAdjust').onclick = () => { S.from = 'vorschlag'; goEditor(false, 'Feinjustieren'); };
