@@ -259,8 +259,13 @@ svg{color-scheme:only light;forced-color-adjust:none}
   <!-- START -->
   <section id="scrStart" hidden>
     <h1>Gestalte deinen Stein</h1>
-    <p>Dein Ziegel wird mit dem Laser graviert und später im neuen Gebäude eingemauert. Du hast zwei Wege.</p>
+    <p id="startIntro">Dein Ziegel wird mit dem Laser graviert und später im neuen Gebäude eingemauert. Du hast zwei Wege.</p>
     <div class="stoneBox shadow" id="startPreview"></div>
+    <div id="startSent" hidden style="display:flex;flex-direction:column;gap:10px">
+      <p style="margin:0"><b>Das ist dein abgeschickter Stein.</b> <span id="startSentZeit"></span>Du kannst ihn ändern und neu absenden. Es gilt immer die letzte Fassung.</p>
+      <button class="btn btn-primary" id="goAendern" type="button">Meinen Stein ändern</button>
+      <p class="small muted" style="margin:0">Oder fang neu an:</p>
+    </div>
     <div class="choices">
       <button class="btn btn-primary choice" id="goVorschlag" type="button"><span class="badge">Empfohlen</span><span class="t">Mach mir einen Vorschlag</span><span class="s">Du gibst deinen Text ein. Du bekommst vier fertige Entwürfe.</span></button>
       <button class="btn choice" id="goSelbst" type="button"><span class="t">Selbst gestalten</span><span class="s">Du wählst Vorlage, Schrift und Größe selbst.</span></button>
@@ -453,7 +458,8 @@ svg{color-scheme:only light;forced-color-adjust:none}
     </div>
     <button class="btn btn-primary" type="button" id="anPdf">Als PDF speichern</button>
     <p class="small" id="anStatus" aria-live="polite"></p>
-    <div class="actions"><button class="btn" type="button" id="anLogin">Stein noch ändern: zur Anmeldung</button></div>
+    <p class="small muted" id="anLogoHint" hidden>Dein Logo ist in diesem Link nur verkleinert gespeichert. Wenn du den Stein änderst, lade das Logo bitte neu hoch.</p>
+    <div class="actions"><button class="btn" type="button" id="anLogin">Meinen Stein ändern</button></div>
   </section>
 
   <!-- SAMMELMODUS -->
@@ -608,7 +614,7 @@ window.addEventListener('popstate', e => {
   let id = e.state && e.state.scr; if (!id || !document.getElementById(id)) return;
   if (id === 'scrLogin' && S.stein) id = 'scrStart';
   NAV_POP = true;
-  try { if (id === 'scrPruefen' && S.design) goPruefen(); else show(id); } catch (err) { show(id); } finally { NAV_POP = false; }
+  try { if (id === 'scrPruefen' && S.design) goPruefen(); else if (id === 'scrStart') goStart(); else show(id); } catch (err) { show(id); } finally { NAV_POP = false; }
 });
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Bild konnte nicht gelesen werden')); i.src = src; }); }
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Laden fehlgeschlagen: ' + src)); document.head.appendChild(s); }); }
@@ -1341,7 +1347,19 @@ async function doLogin(e) {
     return;
   }
   Object.assign(S, { code: fmtCode(code), mail, stein: r.daten.s, name: r.daten.n, design: null, simulated: false });
-  speichereLogin(); $('#inT1').value = ''; $('#inT2').value = ''; $('#inT3').value = ''; goStart();
+  speichereLogin(); $('#inT1').value = ''; $('#inT2').value = ''; $('#inT3').value = '';
+  // Über „Meinen Stein ändern“ aus der Bestätigungs-E-Mail gekommen: den Stein gleich zum Ändern öffnen.
+  const pe = S.pendingEdit; S.pendingEdit = null;
+  if (pe) { try { renderHeaderInfo(); await oeffneZumAendern(pe); return; } catch (err) { } }
+  goStart();
+}
+/* Einen abgeschickten Stein (gepackt) im Editor öffnen. Nur der eigene Stein. */
+async function oeffneZumAendern(packed) {
+  const d = importDesign(await restoreLogo(await unpackDesign(packed))); await ensureBitmaps(d);
+  if (S.stein && d.stein && d.stein !== S.stein) throw new Error('anderer Stein');
+  if (S.stein) d.stein = S.stein;
+  S.design = d; LOGO_SRC = null; S.from = 'start'; if (!S.sentPacked) S.sentPacked = packed;
+  goEditor(false, 'Dein Stein');
 }
 function doLogout() {
   try { sessionStorage.removeItem('tsv-stein-login'); } catch (e) { }
@@ -1357,6 +1375,21 @@ function goStart() {
   let ges = null; try { ges = S.stein ? localStorage.getItem('tsv-stein-gesendet-' + S.stein) : null; } catch (e) { }
   $('#goGesendet').hidden = !ges;
   $('#goGesendet').onclick = async () => { try { await goAnsicht(ges); $('#anLogin').textContent = 'Zurück zum Start'; $('#anLogin').onclick = () => goStart(); } catch (e) { $('#goGesendet').hidden = true; } };
+  // Schon abgeschickt: oben den eigenen Stein zeigen (nicht den Standard-Stein) und das Ändern anbieten.
+  $('#startSent').hidden = true; $('#startIntro').hidden = false;
+  if (ges) {
+    const fuer = S.stein;
+    (async () => {
+      try {
+        const d = importDesign(await restoreLogo(await unpackDesign(ges))); await ensureBitmaps(d);
+        if (S.stein !== fuer || aktuelleSeite() !== 'scrStart') return;
+        S.startDesign = d; $('#startPreview').innerHTML = brickSvg(d);
+        let z = ''; try { const t = localStorage.getItem('tsv-stein-gesendet-zeit-' + fuer), dt = t ? new Date(t) : null; if (dt && !isNaN(dt)) z = 'Abgeschickt am ' + dt.toLocaleDateString('de-DE', { day: 'numeric', month: 'long' }) + ' um ' + dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr. '; } catch (e) { }
+        $('#startSentZeit').textContent = z; $('#startSent').hidden = false; $('#startIntro').hidden = true;
+        $('#goAendern').onclick = async () => { try { await oeffneZumAendern(ges); } catch (e) { $('#startSent').hidden = true; $('#startIntro').hidden = false; } };
+      } catch (e) { }
+    })();
+  }
   show('scrStart');
 }
 
@@ -1740,14 +1773,20 @@ function summaryRows(d) {
   return rows;
 }
 /* Ansicht über den Link aus der Bestätigungs-E-Mail: Stein zeigen und PDF anbieten, ohne Anmeldung */
-async function goAnsicht(packed) {
+async function goAnsicht(packed, vonMail) {
   const d = importDesign(await restoreLogo(await unpackDesign(packed))); await ensureBitmaps(d); S.design = d;
   const r = renderDesign(d);
   $('#steinInfo').innerHTML = ''; $('#footTest').hidden = true;
   $('#anPreview').innerHTML = brickSvg(d, { render: r }); $('#anBw').innerHTML = bwSvg(d, r);
   $('#anSummary').innerHTML = summaryRows(d).map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
   $('#anPdf').onclick = async () => { const st = $('#anStatus'); try { st.textContent = 'PDF wird erstellt …'; const res = await saveFile(fileBase(d) + '.pdf', designPdf(d).output('arraybuffer'), 'application/pdf'); st.textContent = res === 'ok' ? 'PDF gespeichert.' : 'PDF nicht gespeichert.'; } catch (e) { st.textContent = 'Das Speichern hat nicht geklappt.'; } };
-  $('#anLogin').onclick = () => { history.replaceState(null, '', location.pathname); S.design = null; goLogin(); };
+  /* „Meinen Stein ändern“: angemeldet geht es direkt in den Editor, sonst erst zur Anmeldung und danach in den Editor. */
+  $('#anLogin').textContent = 'Meinen Stein ändern'; $('#anLogoHint').hidden = !(vonMail && d.logo);
+  $('#anLogin').onclick = async () => {
+    if ((S.code || ladeLogin()) && S.stein === d.stein) { try { renderHeaderInfo(); await oeffneZumAendern(packed); return; } catch (e) { } }
+    S.design = null; S.pendingEdit = packed; goLogin();
+    const msg = $('#loginMsg'); msg.className = 'small'; msg.textContent = 'Melde dich an. Danach öffnet sich dein Stein zum Ändern.';
+  };
   show('scrAnsicht');
 }
 async function doDownload() {
@@ -2220,7 +2259,7 @@ function wire() {
     S.sending = true; a.setAttribute('aria-disabled', 'true'); const label = a.textContent; a.textContent = 'Wird gesendet …'; st.textContent = '';
     try {
       await fetch(SEND_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: S.sendBody });
-      try { localStorage.setItem('tsv-stein-gesendet-' + S.stein, S.sendPacked); } catch (e2) { }
+      try { localStorage.setItem('tsv-stein-gesendet-' + S.stein, S.sendPacked); localStorage.setItem('tsv-stein-gesendet-zeit-' + S.stein, new Date().toISOString()); } catch (e2) { }
       $('#sendDlgPdfStatus').textContent = '';
       S.sentPacked = S.sendPacked; S.sentAt = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
       a.textContent = label; setSent(true);
@@ -2321,7 +2360,7 @@ async function ensureLogoSrc() {
     let an = /^#ansicht=(z1\..+)$/.exec(location.hash || '');
     if (!an) { const q = new URLSearchParams(location.search).get('ansicht'); if (q && /^z1\./.test(q.trim())) { an = [null, q.trim()]; try { history.replaceState(null, '', location.pathname); } catch (e) { } } }
     if (ZENTRALE) goAdmin();
-    else if (an) { try { await goAnsicht(decodeURIComponent(an[1])); } catch (e) { goLogin(); } }
+    else if (an) { try { await goAnsicht(decodeURIComponent(an[1]), true); } catch (e) { goLogin(); } }
     else if (ladeLogin()) goStart(); else goLogin();
   } catch (e) {
     $('#bootMsg').className = 'err-box'; $('#bootMsg').textContent = 'Der Stein-Designer konnte nicht starten. Prüfe deine Internetverbindung und lade die Seite neu. (' + (e && e.message || e) + ')';
