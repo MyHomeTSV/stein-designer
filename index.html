@@ -82,6 +82,17 @@ details.card>summary::-webkit-details-marker{display:none}
 .ztab{border-collapse:collapse;width:100%;font-size:15px}
 .ztab th,.ztab td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
 .ztab th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.zkpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
+.zkpi div{background:var(--soft);padding:10px 12px;border-radius:8px}
+.zkpi b{display:block;font-size:28px;line-height:32px;font-variant-numeric:tabular-nums}
+.zkpi span{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.zbar{display:flex;height:24px;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:var(--card)}
+.zbar i{display:block;height:100%}
+.zleg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px}
+.zleg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;border:1px solid var(--line)}
+.ztage{display:flex;align-items:flex-end;gap:3px;height:84px;border-bottom:1px solid var(--line)}
+.ztage div{flex:1;min-width:6px;max-width:30px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;font-size:11px;color:var(--muted);height:100%}
+.ztage div i{display:block;width:100%;background:var(--fg);border-radius:2px 2px 0 0}
 a.btn{text-decoration:none}
 a.btn[aria-disabled=true]{opacity:.4;pointer-events:none}
 input[type=email]{font:inherit;font-size:18px;min-height:50px;padding:10px 12px;border:2px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);width:100%}
@@ -450,8 +461,10 @@ input[type=range]{width:100%;accent-color:var(--red);height:32px}
     <div class="card" id="zCard" hidden>
       <h3>Teilnehmer und Rückmeldungen</h3>
       <div class="stats" id="zStats"></div>
-      <p class="small"><b>So holst du die Einsendungen:</b> Öffne in Zoho Forms das Formular „Stein-Designer Eingang“, dann „Alle Einträge“. Tippe auf „Exportieren“ und wähle CSV. Lies die Datei hier ein.</p>
-      <div class="actions"><button class="btn btn-primary" id="btnZoho" type="button">Liste aus Zoho Forms einlesen</button><input type="file" id="inZoho" accept=".csv,text/csv,text/plain" hidden></div>
+      <div id="zDash" style="display:flex;flex-direction:column;gap:10px"></div>
+      <p class="small"><b>So holst du den aktuellen Stand:</b> Tippe auf „Ordner einlesen“ und wähle den Ordner „12_Stein-Designer“. Die Seite liest daraus die Tabelle „Stein-Einladungen“ und alle Einsendungen.</p>
+      <div class="actions"><button class="btn btn-primary" id="btnOrdner" type="button">Ordner einlesen</button><input type="file" id="inOrdner" webkitdirectory multiple hidden>
+        <button class="btn btn-sm" id="btnZoho" type="button">Reserve: Liste aus Zoho Forms einlesen</button><input type="file" id="inZoho" accept=".csv,text/csv,text/plain" hidden></div>
       <p class="small" id="zStatus" aria-live="polite"></p>
       <div style="overflow-x:auto"><table class="ztab" id="zTab"></table></div>
       <div id="zMail" hidden style="display:flex;flex-direction:column;gap:8px">
@@ -560,7 +573,7 @@ const ANSICHT_URL = 'https://stein.zukunft-vereint.de/';
 const SEND_URL = 'https://forms.zohopublic.eu/TSVvon1908Grossenkneten/form/SteinDesignerEingang/formperma/pqI0AHLW86hBNiRrfETcAbjm3vjmQfCyP1huticq6gc/records';
 /* Zugangsliste: nur verschlüsselte Einträge. Ohne passenden Code UND passende E-Mail-Adresse
    lässt sich kein Eintrag lesen. Erzeugt im Sammelmodus unter "Zugangscodes erzeugen". */
-const ZUGANG = {"v":1,"salt":"CXeyIdzP5V1-fz1FLpGaHg","it1":60000,"it2":150000,"e":{"06-l3zk1rpkrimkl":["aZSSgvBr1vktohIa","rDbqQTueMHLC4QrtQGtJuXpKEVnWUgJMO_Wr6x4qGjOgdYwc4szFM98CX_jtG9yUDQ"],"XqrQy7mZPZbo35_O":["z4kpYT7t2NTgo3SC","mapWdLyVzCuuqWE8RgkfBZ3abw8zBqnnOhXkUwF9SJ5_meCrTKgi4dvB9xRxbE0olXZdKA"],"GMd4F7morEVFH1GX":["BIpQ_BqrUB821fEq","fhgWRnrLfS4BDk4Dbjo50AQkGIP4ResoQ3h-J63wkPRTdNcMBjJtzNipF-kNTO2kBXpfEOWeUjuc"]}};
+const ZUGANG = {"v":1,"salt":"i8mz8vw6pMTw_h2nZ2S9SA","it1":60000,"it2":150000,"e":{"MLFxnE59XkyoyojZ":["6pVcEeVF9wfIcdDJ","00fw3QfLIcLDo97Y7WXWMH0xSJLI3xLqZ4iYcKSK_M3a5YZBkzWagQY5EQEsKEBu6Q"],"CPvmkdNHpZcBGKPK":["ByLq0hQu4jR8mQSf","jipSa05cAIqCCuCh9Pl3va8LyQ5WJ0s05i4oyL5ZnI-UcqNVXbvtiMxkxQugHI2Hjag"],"PkOaubB6dw9K5nXb":["3Th8Cw9GunTRhogn","oa3j2lAwZ7LuVYI0ogWq1qcVIwLWmOsAPmlnClrfgNk1lOO2Qo2mjASlVC-S1pUVrpY"],"2um4Gm8MfV6_O3LI":["eH2A50oFCTxqHdDb","i6e-Wk1WJif_q7_aSWrerYDuBER4yPIYZzj6krmhlh0vICwdrFjuKimrF9zVLWjzzTKV-A"]}};
 /* Nur in der privaten Übersichtsseite gefüllt (Teilnehmerliste mit Codes). In der öffentlichen Seite immer null. */
 const ZENTRALE = /*ZENTRALE*/null/*ENDE*/;
 const CODE_ZEICHEN ='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -1815,15 +1828,96 @@ function goAdmin() {
 const ZS = { info: {}, geladen: '' };
 function zRender() {
   if (!ZENTRALE) return; $('#zCard').hidden = false;
-  const T = ZENTRALE.teilnehmer, n = T.filter(t => ZS.info[t.stein]).length;
-  $('#zStats').innerHTML = `<span><b>${T.length}</b> Teilnehmer</span><span><b>${n}</b> eingereicht</span><span><b>${T.length - n}</b> offen</span>` +
-    `<span class="muted">${ZS.geladen ? 'Stand ' + esc(ZS.geladen) : 'Einreichungen noch nicht geladen'}</span>`;
-  $('#zTab').innerHTML = '<thead><tr><th>Stein</th><th>Name</th><th>E-Mail</th><th>Code</th><th>Status</th><th></th></tr></thead><tbody>' + T.map((t, i) => {
-    const s = ZS.info[t.stein];
+  const T = ZENTRALE.teilnehmer, z = zZahlen(), pz = x => z.n ? (100 * x / z.n) : 0;
+  $('#zStats').innerHTML = `<span class="muted">${ZS.geladen ? 'Stand ' + esc(ZS.geladen) : 'Ordner noch nicht eingelesen'}</span>`;
+  const tage = Object.keys(z.tage).sort(); let chart = '';
+  if (tage.length) {
+    const d0 = new Date(tage[0] + 'T12:00'), d1 = new Date(tage[tage.length - 1] + 'T12:00'), list = [];
+    for (let d = new Date(d0); d <= d1 && list.length < 400; d.setDate(d.getDate() + 1)) list.push(zTag(d));
+    const sicht = list.slice(-35), max = Math.max(...sicht.map(k => z.tage[k] || 0), 1);
+    chart = `<div class="small" style="font-weight:600">Einsendungen pro Tag</div><div class="ztage">${sicht.map(k => { const n = z.tage[k] || 0; return `<div title="${k.slice(8)}.${k.slice(5, 7)}.: ${n}">${n || ''}<i style="height:${Math.round(60 * n / max)}px"></i></div>`; }).join('')}</div>
+      <div class="small muted" style="display:flex;justify-content:space-between"><span>${sicht[0].slice(8)}.${sicht[0].slice(5, 7)}.</span><span>${sicht[sicht.length - 1].slice(8)}.${sicht[sicht.length - 1].slice(5, 7)}.</span></div>`;
+  }
+  $('#zDash').innerHTML = `<div class="zkpi"><div><b>${z.n}</b><span>Steine</span></div><div><b>${z.gesendet}</b><span>Einladung verschickt</span></div><div><b>${z.ein}</b><span>Eingereicht</span></div><div><b>${z.offen + z.ueber}</b><span>Noch offen</span></div><div><b>${z.ueber}</b><span>Frist abgelaufen</span></div><div><b>${z.erinnert}</b><span>Erinnert</span></div><div><b>${z.gesendet ? Math.round(100 * z.ein / Math.max(z.gesendet, z.ein)) : 0} %</b><span>Rücklauf</span></div></div>
+    <div class="zbar" role="img" aria-label="Eingereicht ${z.ein}, offen ${z.offen}, Frist abgelaufen ${z.ueber}, noch nicht eingeladen ${z.nicht}"><i style="width:${pz(z.ein)}%;background:var(--fg)"></i><i style="width:${pz(z.offen)}%;background:#9a9a9a"></i><i style="width:${pz(z.ueber)}%;background:var(--red)"></i></div>
+    <div class="zleg"><span><i style="background:var(--fg)"></i>Eingereicht ${z.ein}</span><span><i style="background:#9a9a9a"></i>Offen, Frist läuft ${z.offen}</span><span><i style="background:var(--red)"></i>Frist abgelaufen ${z.ueber}</span><span><i style="background:var(--card)"></i>Noch nicht eingeladen ${z.nicht}</span></div>${chart}`;
+  const pill = { ein: '<span class="pill">Eingereicht</span>', offen: '<span class="pill std">Offen</span>', ueber: '<span class="pill bad">Frist abgelaufen</span>', nicht: '<span class="pill std">Nicht eingeladen</span>' };
+  $('#zTab').innerHTML = '<thead><tr><th>Stein</th><th>Name</th><th>E-Mail</th><th>Code</th><th>Einladung</th><th>Frist</th><th>Status</th><th></th></tr></thead><tbody>' + T.map((t, i) => {
+    const s = ZS.info[t.stein], k = zStatus(t);
     return `<tr><td><b>${esc(t.stein)}</b></td><td>${esc(t.name)}</td><td>${esc(t.mail)}</td><td style="font-family:monospace">${esc(t.code)}</td>
-      <td>${s ? `<span class="pill">Eingereicht</span> ${esc(s.am)}${s.hinweis ? `<br><span class="small status bad">${esc(s.hinweis)}</span>` : ''}${s.nachricht ? `<br><span class="small">Nachricht: ${esc(s.nachricht)}</span>` : ''}` : '<span class="pill std">Offen</span>'}</td>
+      <td>${esc(t.gesendet || '')}${t.erinnert ? `<br><span class="small">Erinnert ${esc(t.erinnert)}</span>` : ''}</td><td>${esc(String(t.frist || '').replace(/^[A-Za-zä]+,\s*/, ''))}</td>
+      <td>${pill[k]}${k === 'ein' ? ' ' + esc((s && s.am) || t.eingereicht || '') : ''}${s && s.hinweis ? `<br><span class="small status bad">${esc(s.hinweis)}</span>` : ''}${k === 'ein' && !s ? '<br><span class="small">Laut Tabelle. Datei fehlt im Ordner.</span>' : ''}${s && s.nachricht ? `<br><span class="small">Nachricht: ${esc(s.nachricht)}</span>` : ''}</td>
       <td><button class="btn btn-link" type="button" data-zmail="${i}" style="min-height:32px;padding:0">E-Mail-Text</button></td></tr>`;
   }).join('') + '</tbody>';
+}
+/* Deutsche Datumsangaben lesen: „24.11.2026 20:02“ oder „Dienstag, 8. Dezember 2026“ */
+function zDatum(s) {
+  s = String(s || ''); let m = s.match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:\D+(\d{1,2}):(\d{2}))?/);
+  if (m) return new Date(+m[3] < 100 ? 2000 + +m[3] : +m[3], m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0));
+  m = s.match(/(\d{1,2})\.\s*([A-Za-zä]+)\s+(\d{4})/);
+  if (m) { const i = ['jan', 'feb', 'mär', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dez'].indexOf(m[2].slice(0, 3).toLowerCase()); if (i >= 0) return new Date(+m[3], i, +m[1]); }
+  return null;
+}
+function zTag(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function zStatus(t) {
+  if (ZS.info[t.stein] || t.eingereicht) return 'ein';
+  if (!t.gesendet) return 'nicht';
+  const f = zDatum(t.frist), heute = new Date(); heute.setHours(0, 0, 0, 0);
+  return f && f < heute ? 'ueber' : 'offen';
+}
+function zZahlen() {
+  const z = { n: ZENTRALE.teilnehmer.length, gesendet: 0, ein: 0, offen: 0, ueber: 0, nicht: 0, erinnert: 0, tage: {} };
+  for (const t of ZENTRALE.teilnehmer) {
+    const k = zStatus(t); z[k]++; if (t.gesendet) z.gesendet++; if (t.erinnert) z.erinnert++;
+    if (k === 'ein') { const s = ZS.info[t.stein], d = s && s.ts ? new Date(s.ts) : zDatum(t.eingereicht); if (d && !isNaN(d)) { const key = zTag(d); z.tage[key] = (z.tage[key] || 0) + 1; } }
+  }
+  return z;
+}
+/* Tabelle „Stein-Einladungen.xlsx“ lesen (erste Tabelle mit einer Spalte „Stein“) */
+async function zXlsx(file) {
+  const zip = await JSZip.loadAsync(await file.arrayBuffer()), P = new DOMParser();
+  const xml = async n => { const f = zip.file(n); return f ? P.parseFromString(await f.async('string'), 'application/xml') : null; };
+  const ss = await xml('xl/sharedStrings.xml'), SS = ss ? [...ss.getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  for (const n of Object.keys(zip.files).filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()) {
+    const sh = await xml(n), rows = [];
+    for (const r of sh.getElementsByTagName('row')) {
+      const o = [];
+      for (const c of r.getElementsByTagName('c')) {
+        const col = (c.getAttribute('r') || '').replace(/\d+/g, '').split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1, t = c.getAttribute('t');
+        const v = c.getElementsByTagName('v')[0], is = c.getElementsByTagName('is')[0];
+        if (col >= 0) o[col] = t === 's' ? (SS[+(v && v.textContent)] || '') : t === 'inlineStr' ? (is ? is.textContent : '') : (v ? v.textContent : '');
+      }
+      rows.push(Array.from(o, x => String(x == null ? '' : x).trim()));
+    }
+    const hi = rows.findIndex(r => r.some(x => x.toLowerCase() === 'stein')); if (hi < 0) continue;
+    const h = rows[hi].map(x => x.toLowerCase()), g = (r, k) => { const i = h.indexOf(k); return i < 0 ? '' : (r[i] || ''); };
+    return rows.slice(hi + 1).filter(r => g(r, 'stein')).map(r => ({ stein: g(r, 'stein'), name: g(r, 'name'), mail: g(r, 'mail'), code: g(r, 'code'), gesendet: g(r, 'gesendet'), frist: g(r, 'frist'), eingereicht: g(r, 'eingereicht'), erinnert: g(r, 'erinnert') }));
+  }
+  return [];
+}
+/* Eine abgelegte Einsendung lesen: Text mit den Markern [[STEIN]] … [[DESIGN]] */
+function zMarker(text) {
+  const t = String(text).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const g = k => { const m = t.match(new RegExp('\\[\\[' + k + '\\]\\]([\\s\\S]*?)\\[\\[/' + k + '\\]\\]')); return m ? m[1].trim() : ''; };
+  const design = g('DESIGN').replace(/\s+/g, ''); if (!design) return null;
+  return { code: g('CODE'), stein: g('STEIN'), name: g('NAME'), design, submittedAt: g('AM') };
+}
+async function zLadeOrdner(files) {
+  const st = $('#zStatus'); st.textContent = 'Der Ordner wird eingelesen …';
+  try {
+    files = [...files].filter(f => !/^~\$/.test(f.name));
+    const x = files.find(f => /^Stein-Einladungen\.xlsx$/i.test(f.name)); let nT = -1;
+    if (x) { const T = await zXlsx(x); nT = T.length; if (nT) { ZENTRALE.teilnehmer = T; AD.csv = T.map(t => ({ stein: t.stein, name: t.name })); } }
+    const subs = []; let leer = 0;
+    for (const f of files.filter(f => /^ST-.*\.txt$/i.test(f.name))) {
+      const s = zMarker(await f.text());
+      if (s && /^z1\./.test(s.design)) { if (!s.submittedAt) s.submittedAt = new Date(f.lastModified).toISOString(); subs.push(s); } else leer++;
+    }
+    ZS.info = {}; AD.submitted.clear();
+    const res = await zUebernehme(subs);
+    st.textContent = (nT > 0 ? `Tabelle gelesen: ${nT} Steine. ` : nT === 0 ? 'Die Tabelle „Stein-Einladungen“ ist leer oder nicht lesbar. ' : 'Die Tabelle „Stein-Einladungen.xlsx“ liegt nicht in diesem Ordner. ') +
+      `${res.ok} Einsendung${res.ok === 1 ? '' : 'en'} gelesen` + (res.bad + leer ? `, ${res.bad + leer} nicht lesbar` : '') + '.';
+  } catch (e) { st.textContent = 'Das Einlesen hat nicht geklappt: ' + ((e && e.message) || e); }
 }
 function zMailText(t) {
   return `Betreff: Dein Stein für den Verein – jetzt gestalten\n\nHallo ${t.name},\n\nvielen Dank für deine Unterstützung bei „Zukunft Vereint“! Jetzt kannst du deinen Stein gestalten.\n\nSo geht es:\n1. Öffne den Stein-Designer: ${ZENTRALE.designerUrl}\n2. Melde dich an mit deinem Code ${t.code} und der E-Mail-Adresse, mit der du deinen Stein gekauft hast.\n3. Gestalte deinen Stein und tippe am Ende auf „Absenden“.\n\nDeine Steinnummer: ${t.stein}\n\nBitte gestalte deinen Stein bis zum [Datum]. Ohne Rückmeldung gravieren wir deinen Namen im Standarddesign.\n\nFragen? Antworte einfach auf diese E-Mail.\n\nSportliche Grüße\nTSV 1908 Großenkneten`;
@@ -1855,7 +1949,7 @@ async function zUebernehme(subs) {
       if (o.logo && o.logo.perUpload) hin.push('Eigenes Logo: Originaldatei fehlt, bitte beim Käufer anfragen');
       if (t && normCode(f.code) === normCode(t.code)) { d.nameAusLink = t.name; AD.submitted.set(d.stein, d); }
       const dt = f.am ? new Date(f.am) : null;
-      ZS.info[d.stein] = { am: dt && !isNaN(dt) ? dt.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '', hinweis: hin.join('. '), nachricht: f.nachricht };
+      ZS.info[d.stein] = { ts: dt && !isNaN(dt) ? +dt : 0, am: dt && !isNaN(dt) ? dt.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '', hinweis: hin.join('. '), nachricht: f.nachricht };
       ok++;
     } catch (e) { bad++; }
   }
@@ -2114,6 +2208,8 @@ function wire() {
   $('#btnZip').onclick = doZip;
   $('#btnOverview').onclick = doOverview;
   $('#adExit').onclick = () => { S.admin = false; goStart(); };
+  $('#btnOrdner').onclick = () => $('#inOrdner').click();
+  $('#inOrdner').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) zLadeOrdner(fs); };
   $('#btnZoho').onclick = () => $('#inZoho').click();
   $('#inZoho').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) zLadeZoho(f); };
   $('#zTab').addEventListener('click', e => {
