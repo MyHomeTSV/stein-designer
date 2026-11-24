@@ -1018,17 +1018,33 @@ function bestTextDesign(base, t1, sub, opt = {}) {
 }
 /* ---------- Namenslisten (Mannschaften, Familien) ---------- */
 function parseNames(t) {
-  t = String(t || '').trim(); if (!t) return { parts: [], joiner: ' · ' };
+  t = String(t || '').trim(); if (!t) return { parts: [], joiner: ' · ', seps: [] };
   const joiner = /·|•/.test(t) ? ' · ' : /,|;/.test(t) ? ', ' : /\s[–-]\s/.test(t) ? ' – ' : ' · ';
-  let parts = t.split(/\s*(?:\n|,|;|·|•|\/|\|)\s*|\s+[-–]\s+|\s+(?:und|&)\s+/i).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  if (parts.length < 2) { const w = t.replace(/\s+/g, ' ').split(' '); if (w.length >= 3 && w.every(x => /^[A-Za-zÄÖÜäöüßÀ-ÿ][A-Za-zÄÖÜäöüßÀ-ÿ'’.-]*$/.test(x))) parts = w; }
-  return { parts, joiner };
+  /* seps[i] = was zwischen Name i und Name i+1 getippt wurde („ und “, „, “, „ · “ …). Damit bleibt „wie eingegeben“ wirklich wie eingegeben. */
+  const re = /\s*(\n|,|;|·|•|\/|\|)\s*|\s+([-–])\s+|\s+(und|&)\s+/gi;
+  let parts = [], seps = [], last = 0, m;
+  while ((m = re.exec(t))) {
+    const p = t.slice(last, m.index).replace(/\s+/g, ' ').trim(); last = re.lastIndex; if (!p) continue;
+    parts.push(p);
+    seps.push(m[3] ? ' ' + m[3] + ' ' : m[2] ? ' – ' : m[1] === '\n' ? joiner : /[,;]/.test(m[1]) ? ', ' : /[·•]/.test(m[1]) ? ' · ' : ' ' + m[1] + ' ');
+  }
+  { const rest = t.slice(last).replace(/\s+/g, ' ').trim(); if (rest) parts.push(rest); }
+  if (parts.length < 2) { const w = t.replace(/\s+/g, ' ').split(' '); if (w.length >= 3 && w.every(x => /^[A-Za-zÄÖÜäöüßÀ-ÿ][A-Za-zÄÖÜäöüßÀ-ÿ'’.-]*$/.test(x))) { parts = w; seps = w.slice(1).map(() => ' '); } }
+  seps.length = Math.max(0, parts.length - 1);
+  return { parts, joiner, seps };
 }
-function makeJoinLine(sep, detected) {
-  const j = { komma: ', ', punkt: ' · ', strich: ' – ', leer: ' ' }[sep] || detected;
-  return (arr, last, hasPrev) => {
+/* start = Nummer des ersten Namens der Zeile in der ganzen Liste (nur für „wie eingegeben“ nötig) */
+function makeJoinLine(sep, detected, seps) {
+  const j = { komma: ', ', punkt: ' · ', strich: ' – ', leer: ' ' }[sep] || detected, orig = !sep && seps && seps.length > 0;
+  return (arr, last, hasPrev, start) => {
     if (sep === 'komma' && last) { if (arr.length >= 2) return arr.slice(0, -1).join(', ') + ' und ' + arr[arr.length - 1]; if (hasPrev) return 'und ' + arr[0]; }
-    return arr.join(j);
+    if (orig && start != null) {
+      /* Beginnt eine neue Zeile nach „und“ oder „&“, wandert das Wort mit auf die neue Zeile. Satzzeichen am Zeilenende entfallen. */
+      const vor = start > 0 ? String(seps[start - 1] || '').trim() : ''; let s = /^(und|&)$/i.test(vor) ? vor + ' ' : '';
+      arr.forEach((a, i) => { s += a; if (i < arr.length - 1) s += seps[start + i] != null ? seps[start + i] : j; });
+      return s;
+    }
+    return arr.join(orig ? seps[0] : j);
   };
 }
 /* Namen ausgewogen auf k Zeilen verteilen (nie mitten im Namen trennen) */
@@ -1039,7 +1055,7 @@ function breakNames(parts, k, joinLine, meas) {
   let lo = Math.max(...w), hi = w.reduce((a, b) => a + b, 0) + jw * parts.length + 1;
   if (fill(lo).length > k) { for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (fill(mid).length <= k) hi = mid; else lo = mid; } } else hi = lo;
   const lines = fill(hi); if (lines.length !== k) return null;
-  return lines.map((ln, i) => joinLine(ln, i === lines.length - 1, i > 0));
+  let off = 0; return lines.map((ln, i) => { const s = joinLine(ln, i === lines.length - 1, i > 0, off); off += ln.length; return s; });
 }
 /* Überschrift (+ Zusatz) groß, Namen darunter so groß wie möglich, mindestens 5 mm */
 function namesDesign(base, t1, t2, names, opt) {
@@ -1074,11 +1090,13 @@ function autoSplit(t) {
 }
 const aktionLine = k => ({ text: AKTION, em: Math.ceil(5.6 / F[k].cap * 10) / 10 });
 /* Die Knöpfe zum Trennen zeigen die eigenen Namen als Beispiel, nicht „Anna, Tom und Lisa“ */
-function sepBeispiele(sel, parts) {
+function sepBeispiele(sel, parts, seps) {
   const n = (parts || []).slice(0, 3).map(s => String(s).trim()).filter(Boolean).map(s => s.length > 12 ? s.slice(0, 11) + '…' : s);
   const p = n.length >= 2 ? n : ['Anna', 'Tom', 'Lisa'], mehr = (parts || []).length > 3 ? ' …' : '';
   const txt = { komma: (p.length > 2 ? p.slice(0, -1).join(', ') + ' und ' + p[p.length - 1] : p.join(' und ')), punkt: p.join(' · '), strich: p.join(' – '), leer: p.join(' ') };
-  for (const b of document.querySelectorAll(sel + ' button')) if (txt[b.dataset.v]) b.textContent = txt[b.dataset.v] + (b.dataset.v === 'komma' ? '' : mehr);
+  /* „wie eingegeben“ zeigt den eigenen Text mit den getippten Verbindungen */
+  txt[''] = n.length >= 2 && seps && seps.length ? 'wie eingegeben: ' + n.map((a, i) => a + (i < n.length - 1 ? (seps[i] != null ? seps[i] : ' ') : '')).join('') + mehr : 'wie eingegeben';
+  for (const b of document.querySelectorAll(sel + ' button')) if (txt[b.dataset.v] != null) b.textContent = txt[b.dataset.v] + (b.dataset.v === 'komma' || b.dataset.v === '' ? '' : mehr);
 }
 /* Namensliste mit einheitlichem Trennzeichen schreiben */
 function formatNames(t, sep) {
@@ -1406,10 +1424,10 @@ function runSuggestions(typing) {
   let nm = parseNames(t3);
   if (nm.parts.length < 2) { const n2 = parseNames(t2); if (n2.parts.length >= 3) { nm = n2; t2 = ''; } }
   const hasNames = nm.parts.length >= 2;
-  $('#rowSep').hidden = !hasNames; sepBeispiele('#segSugSep', nm.parts);
+  $('#rowSep').hidden = !hasNames; sepBeispiele('#segSugSep', nm.parts, nm.seps);
   $('#namesCount').textContent = nm.parts.length ? `${nm.parts.length} Name${nm.parts.length === 1 ? '' : 'n'} erkannt` : '';
   const pv = id => { const b = $(`#${id} button[aria-pressed=true]`); return b ? b.dataset.v : ''; };
-  const names = hasNames ? { parts: nm.parts, joinLine: makeJoinLine(pv('segSugSep'), nm.joiner), sep: pv('segSugSep'), raw: (t3.trim() ? t3 : nm.parts.join(', ')).trim() } : null;
+  const names = hasNames ? { parts: nm.parts, joinLine: makeJoinLine(pv('segSugSep'), nm.joiner, nm.seps), sep: pv('segSugSep'), raw: (t3.trim() ? t3 : nm.parts.join(', ')).trim() } : null;
   if (!hasNames && nm.parts.length === 1) t2 = [t2, nm.parts[0]].filter(Boolean).join(' · ');
   const graf = pv('segSugGraf') || 'ohne', side = pv('segSugSide') || 'links';
   $('#optLogo').hidden = graf !== 'logo'; $('#optSide').hidden = graf === 'ohne' || (graf === 'logo' && !S.sugLogo);
@@ -1477,7 +1495,7 @@ function applyNamensliste(d) {
   const keep = d.zeilen.filter(z => !z.liste);
   const nl = d.namensliste || { text: '', trenner: '' }, nm = parseNames(nl.text);
   if (!nm.parts.length) { d.zeilen = keep.length ? keep : [{ text: '', groesse: 18 }]; return; }
-  const join = makeJoinLine(nl.trenner || '', nm.joiner), lf = lineFont(d, false).font;
+  const join = makeJoinLine(nl.trenner || '', nm.joiner, nm.seps), lf = lineFont(d, false).font;
   const meas = s => lf.getAdvanceWidth(d.grossbuchstaben ? upper(s) : s, 10);
   const ref = keep.some(z => String(z.text).trim()) ? Math.max(...keep.map(z => z.groesse)) : 10;
   let best = null;
@@ -1551,7 +1569,7 @@ function refresh() {
     }
   });
   { const n = $('#edNamesNote'); if (n) { n.hidden = !S.listNote; n.textContent = S.listNote || ''; } S.listNote = S.listNote ? S.listNote : ''; }
-  { const l = d.zeilen.find(z => z.liste); $('#edNamesSizeRow').hidden = !l; { const pn = parseNames((d.namensliste || {}).text).parts; $('#edNamesSepRow').hidden = !l || pn.length < 2; sepBeispiele('#segEdSep', pn); }
+  { const l = d.zeilen.find(z => z.liste); $('#edNamesSizeRow').hidden = !l; { const pq = parseNames((d.namensliste || {}).text), pn = pq.parts; $('#edNamesSepRow').hidden = !l || pn.length < 2; sepBeispiele('#segEdSep', pn, pq.seps); }
     if (l) { $('#outLSize').textContent = `${fmt(l.groesse * cap)} mm hoch`; $('#edNamesInfo').textContent = namesInfo(d); } }
   if ($('#outGap')) $('#outGap').textContent = `${fmt(d.grafik.abstand)} mm`;
   if ($('#outGSize')) $('#outGSize').textContent = `${fmt(d.grafik.groesse)} mm hoch`;
