@@ -1166,7 +1166,7 @@ function brickSvg(d, opt = {}) {
   /* Grafiken (Wappen, Logo) als Maske aus derselben Bitmap, die auch ins PDF geht */
   const imgs = r.shapes.filter(s => s.src);
   const masks = imgs.map((s, i) => `<mask id="${id}m${i}" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="240" height="73"><image href="${s.src}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none"/></mask>`).join('');
-  const imgDraw = imgs.map((s, i) => `<rect width="240" height="73" fill="#f2b9a0" opacity=".22" mask="url(#${id}m${i})" transform="translate(.12 .24)"/><rect width="240" height="73" fill="#2f3033" opacity=".9" mask="url(#${id}m${i})"/>`).join('');
+  const imgDraw = imgs.map((s, i) => `<rect width="240" height="73" fill="#f2b9a0" opacity=".22" mask="url(#${id}m${i})" transform="translate(.12 .24)"/><rect width="240" height="73" fill="#131315" opacity=".97" mask="url(#${id}m${i})"/>`).join('');
   let pits = ''; for (let i = 0; i < 80; i++) pits += `<circle cx="${(R() * 240).toFixed(2)}" cy="${(R() * 73).toFixed(2)}" r="${(0.12 + R() * 0.42).toFixed(2)}"/>`;
   const photo = S.photo && !opt.noPhoto;
   return `<svg viewBox="0 0 240 73" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vorschau: so sieht dein gravierter Stein aus">
@@ -1174,7 +1174,7 @@ function brickSvg(d, opt = {}) {
   <g clip-path="url(#${id})">
     <rect width="240" height="73" fill="hsl(${hue.toFixed(1)},${sat.toFixed(1)}%,${lig.toFixed(1)}%)"/>
     ${photo ? `<image href="${S.photo}" width="240" height="73" preserveAspectRatio="xMidYMid slice"/>` : `<rect width="240" height="73" filter="url(#fMottle)"/><g fill="#2a0f08" opacity=".38">${pits}</g>`}
-    ${path ? `<path d="${path}" fill="#f2b9a0" opacity=".22" transform="translate(.12 .24)"/><path d="${path}" fill="#2f3033" opacity=".9"/>` : ''}${imgDraw}
+    ${path ? `<path d="${path}" fill="#f2b9a0" opacity=".22" transform="translate(.12 .24)"/><path d="${path}" fill="#131315" opacity=".97"/>` : ''}${imgDraw}
     <rect width="240" height="73" filter="url(#fGrain)" opacity="${photo ? .35 : 1}"/>
     <rect width="240" height="73" fill="url(#gShadeV)"/><rect width="240" height="73" fill="url(#gShadeH)"/>
   </g>
