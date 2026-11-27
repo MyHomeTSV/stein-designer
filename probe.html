@@ -58,6 +58,8 @@ p{margin:0}
 @media (min-width:620px){.choices{grid-template-columns:1fr 1fr}}
 .stoneBox svg{width:100%;height:auto;display:block}
 .stoneBox.shadow svg{filter:drop-shadow(0 6px 9px rgba(0,0,0,.28))}
+.stCv{display:block;width:100%;height:auto}
+.stoneBox.shadow .stCv{filter:drop-shadow(0 6px 9px rgba(0,0,0,.28))}
 .facts{display:grid;gap:6px;font-size:15px;padding:0;margin:0;list-style:none}
 .facts li{display:flex;gap:8px}
 .facts li::before{content:"";flex:none;width:8px;height:8px;margin-top:.55em;background:var(--red);border-radius:2px}
@@ -1210,14 +1212,97 @@ function placeholderSvg(p, light) {
   return `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="none" stroke="${c}" stroke-width=".5" stroke-dasharray="1.5 1"/>
   <text x="${p.x + p.w / 2}" y="${p.y + p.h / 2 + 1.5}" text-anchor="middle" font-size="4.2" font-family="Barlow,Arial,sans-serif" fill="${c}">${p.art === 'qr' ? 'QR-Code' : 'Logo'}</text>`;
 }
+/* ---------- Vorschau als Bildfläche (Canvas) ----------
+   Manche Handy-Browser (Samsung Internet mit eigenem Dunkelmodus) färben Zeichnungen (SVG) um: Die dunkle Gravur wird hellgrau.
+   Das passiert auch, wenn die Zeichnung erst danach in ein Bild gewandelt wird. Direkt gemalte Bildflächen bleiben unverändert
+   (geprüft mit Samsung Internet 28 am 27.11.2026). Darum malt der Designer den Stein hier ganz ohne SVG.
+   Schalter: In der privaten Übersicht bleibt es bei SVG. */
+const STEIN_BILD = !ZENTRALE && /*BILD*/true/*ENDE*/;
+const CV_JOBS = new Map(), CV_IMG = new Map(); let CV_T = false;
+/* Bild zu einer Adresse. Ist es noch nicht geladen, kommt null zurück und „again“ wird nach dem Laden aufgerufen. */
+function cvImg(src, again) {
+  let e = CV_IMG.get(src);
+  if (!e) { e = { img: new Image(), ok: false, wait: [] }; CV_IMG.set(src, e); e.img.onload = () => { e.ok = true; const w = e.wait; e.wait = []; w.forEach(f => { try { f(); } catch (x) { } }); }; e.img.src = src; }
+  if (!e.ok && again) e.wait.push(again);
+  return e.ok ? e.img : null;
+}
+/* Liefert das HTML einer leeren Bildfläche und merkt sich, was hineingemalt wird. Gemalt wird, sobald sie in der Seite steht. */
+function cvHtml(job, label) {
+  const id = 'c' + (++UID); CV_JOBS.set(id, { job, n: 0 });
+  if (!CV_T) { CV_T = true; queueMicrotask(cvDrain); }
+  return `<canvas class="stCv" data-k="${id}" width="480" height="146" role="img" aria-label="${label}"></canvas>`;
+}
+function cvDrain() {
+  CV_T = false; let rest = false;
+  for (const [id, e] of CV_JOBS) {
+    const cv = document.querySelector('canvas.stCv[data-k="' + id + '"]');
+    if (cv) { CV_JOBS.delete(id); cv._job = e.job; cvPaint(cv); } else if (++e.n < 30) rest = true; else CV_JOBS.delete(id);
+  }
+  if (rest && !CV_T) { CV_T = true; requestAnimationFrame(cvDrain); }
+}
+function cvPaint(cv) {
+  const job = cv._job; if (!job) return;
+  const zoom = cv.closest('.zoomStone') ? 3 : 1, dpr = Math.min(3, window.devicePixelRatio || 1);
+  const W = Math.max(480, Math.min(3600, Math.round((cv.clientWidth || 360) * dpr * zoom)));
+  if (cv.width !== W) { cv.width = W; cv.height = Math.round(W * 73 / 240); }
+  const c = cv.getContext('2d'); c.setTransform(W / 240, 0, 0, W / 240, 0, 0); c.clearRect(0, 0, 240, 73);
+  job(c, () => { if (cv.isConnected) cvPaint(cv); });
+}
+function cvRound(c, x, y, w, h, r) { c.beginPath(); if (c.roundRect) c.roundRect(x, y, w, h, r); else { c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); } }
+/* Grafik (Wappen, Logo) in einer Farbe malen. Die Bitmap dient nur als Maske. */
+function cvMask(c, img, s, color, dx, dy) {
+  const k = c.getTransform().a, w = Math.max(1, Math.round(s.w * k)), h = Math.max(1, Math.round(s.h * k));
+  const o = cvMask.o || (cvMask.o = document.createElement('canvas')); o.width = w; o.height = h;
+  const x = o.getContext('2d'); x.drawImage(img, 0, 0, w, h); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, w, h);
+  c.drawImage(o, s.x + dx, s.y + dy, s.w, s.h);
+}
+function cvPlatz(c, p, col) {
+  if (!p) return; c.save(); c.strokeStyle = col; c.lineWidth = .5; c.setLineDash([1.5, 1]); c.strokeRect(p.x, p.y, p.w, p.h); c.setLineDash([]);
+  c.fillStyle = col; c.font = '4.2px Barlow,Arial,sans-serif'; c.textAlign = 'center'; c.fillText(p.art === 'qr' ? 'QR-Code' : 'Logo', p.x + p.w / 2, p.y + p.h / 2 + 1.5); c.restore();
+}
+function brickJob(d, opt, r) {
+  const R = rng(hash(d.stein || 'TEST')), hue = 12 + R() * 7, sat = 54 + R() * 10, lig = 50 + R() * 5, pits = [];
+  for (let i = 0; i < 80; i++) pits.push([R() * 240, R() * 73, 0.12 + R() * 0.42]);
+  const pd = r.shapes.filter(s => !s.src).map(s => cmdsToD(s.cmds)).join(''), imgs = r.shapes.filter(s => s.src);
+  const fotoSrc = S.photo && !opt.noPhoto ? S.photo : null, guides = !!opt.guides, ph = r.placeholder;
+  return (c, again) => {
+    c.save(); cvRound(c, 0, 0, 240, 73, 1.6); c.clip();
+    c.fillStyle = `hsl(${hue.toFixed(1)},${sat.toFixed(1)}%,${lig.toFixed(1)}%)`; c.fillRect(0, 0, 240, 73);
+    const im = fotoSrc ? cvImg(fotoSrc, again) : null;
+    if (im) { const s = Math.max(240 / im.width, 73 / im.height), w = im.width * s, h = im.height * s; c.drawImage(im, (240 - w) / 2, (73 - h) / 2, w, h); }
+    else if (!fotoSrc) { c.fillStyle = 'rgba(42,15,8,.38)'; for (const p of pits) { c.beginPath(); c.arc(p[0], p[1], p[2], 0, 6.2832); c.fill(); } }
+    if (pd) { const p = new Path2D(pd); c.save(); c.translate(.12, .24); c.fillStyle = 'rgba(242,185,160,.22)'; c.fill(p); c.restore(); c.fillStyle = 'rgba(47,48,51,.9)'; c.fill(p); }
+    for (const s of imgs) { const mi = cvImg(s.src, again); if (!mi) continue; cvMask(c, mi, s, 'rgba(242,185,160,.22)', .12, .24); cvMask(c, mi, s, 'rgba(47,48,51,.9)', 0, 0); }
+    let g = c.createLinearGradient(0, 0, 0, 73); g.addColorStop(0, 'rgba(255,255,255,.2)'); g.addColorStop(.07, 'rgba(255,255,255,0)'); g.addColorStop(.82, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.32)'); c.fillStyle = g; c.fillRect(0, 0, 240, 73);
+    g = c.createLinearGradient(0, 0, 240, 0); g.addColorStop(0, 'rgba(0,0,0,.22)'); g.addColorStop(.05, 'rgba(0,0,0,0)'); g.addColorStop(.95, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.26)'); c.fillStyle = g; c.fillRect(0, 0, 240, 73);
+    c.restore();
+    cvPlatz(c, ph, '#fff');
+    if (guides) {
+      c.save(); c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = .35; c.setLineDash([2.2, 1.4]); c.strokeRect(AREA.x, AREA.y, AREA.w, AREA.h); c.setLineDash([]);
+      c.fillStyle = 'rgba(255,255,255,.9)'; c.font = '3px Barlow,Arial,sans-serif'; c.fillText('Gestaltungsfläche 220 × 60 mm', AREA.x + 0.6, AREA.y - 1.6); c.restore();
+    }
+  };
+}
+function bwJob(d, r) {
+  const pd = r.shapes.filter(s => !s.src).map(s => cmdsToD(s.cmds)).join(''), imgs = r.shapes.filter(s => s.src), ph = r.placeholder;
+  return (c, again) => {
+    c.fillStyle = '#fff'; c.fillRect(.2, .2, 239.6, 72.6); c.strokeStyle = '#b5b5b5'; c.lineWidth = .4; c.strokeRect(.2, .2, 239.6, 72.6);
+    c.save(); c.strokeStyle = '#d0d0d0'; c.lineWidth = .3; c.setLineDash([1.5, 1]); c.strokeRect(AREA.x, AREA.y, AREA.w, AREA.h); c.restore();
+    if (pd) { c.fillStyle = '#000'; c.fill(new Path2D(pd)); }
+    for (const s of imgs) { const mi = cvImg(s.src, again); if (mi) c.drawImage(mi, s.x, s.y, s.w, s.h); }
+    cvPlatz(c, ph, '#777');
+  };
+}
+window.addEventListener('resize', () => { clearTimeout(cvPaint.t); cvPaint.t = setTimeout(() => document.querySelectorAll('canvas.stCv').forEach(cvPaint), 250); });
 function brickSvg(d, opt = {}) {
+  if (STEIN_BILD) return cvHtml(brickJob(d, opt, opt.render || renderDesign(d)), 'Vorschau: so sieht dein gravierter Stein aus');
   const r = opt.render || renderDesign(d), id = 'b' + (++UID), R = rng(hash(d.stein || 'TEST'));
   const hue = 12 + R() * 7, sat = 54 + R() * 10, lig = 50 + R() * 5;
   const path = r.shapes.filter(s => !s.src).map(s => cmdsToD(s.cmds)).join('');
   /* Grafiken (Wappen, Logo) als Maske aus derselben Bitmap, die auch ins PDF geht */
   const imgs = r.shapes.filter(s => s.src);
   const masks = imgs.map((s, i) => `<mask id="${id}m${i}" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="240" height="73"><image href="${s.src}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none"/></mask>`).join('');
-  const imgDraw = imgs.map((s, i) => `<rect width="240" height="73" fill="#f2b9a0" opacity=".22" mask="url(#${id}m${i})" transform="translate(.12 .24)"/><rect width="240" height="73" fill="#131315" opacity=".97" mask="url(#${id}m${i})"/>`).join('');
+  const imgDraw = imgs.map((s, i) => `<rect width="240" height="73" fill="#f2b9a0" opacity=".22" mask="url(#${id}m${i})" transform="translate(.12 .24)"/><rect width="240" height="73" fill="#2f3033" opacity=".9" mask="url(#${id}m${i})"/>`).join('');
   let pits = ''; for (let i = 0; i < 80; i++) pits += `<circle cx="${(R() * 240).toFixed(2)}" cy="${(R() * 73).toFixed(2)}" r="${(0.12 + R() * 0.42).toFixed(2)}"/>`;
   const photo = S.photo && !opt.noPhoto;
   return `<svg viewBox="0 0 240 73" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vorschau: so sieht dein gravierter Stein aus">
@@ -1225,7 +1310,7 @@ function brickSvg(d, opt = {}) {
   <g clip-path="url(#${id})">
     <rect width="240" height="73" fill="hsl(${hue.toFixed(1)},${sat.toFixed(1)}%,${lig.toFixed(1)}%)"/>
     ${photo ? `<image href="${S.photo}" width="240" height="73" preserveAspectRatio="xMidYMid slice"/>` : `<rect width="240" height="73" filter="url(#fMottle)"/><g fill="#2a0f08" opacity=".38">${pits}</g>`}
-    ${path ? `<path d="${path}" fill="#f2b9a0" opacity=".22" transform="translate(.12 .24)"/><path d="${path}" fill="#131315" opacity=".97"/>` : ''}${imgDraw}
+    ${path ? `<path d="${path}" fill="#f2b9a0" opacity=".22" transform="translate(.12 .24)"/><path d="${path}" fill="#2f3033" opacity=".9"/>` : ''}${imgDraw}
     <rect width="240" height="73" filter="url(#fGrain)" opacity="${photo ? .35 : 1}"/>
     <rect width="240" height="73" fill="url(#gShadeV)"/><rect width="240" height="73" fill="url(#gShadeH)"/>
   </g>
@@ -1234,7 +1319,9 @@ function brickSvg(d, opt = {}) {
   </svg>`;
 }
 function bwSvg(d, r) {
-  r = r || renderDesign(d); const path = r.shapes.filter(s => !s.src).map(s => cmdsToD(s.cmds)).join('');
+  r = r || renderDesign(d);
+  if (STEIN_BILD) return cvHtml(bwJob(d, r), 'Gravurvorlage schwarz auf weiß');
+  const path = r.shapes.filter(s => !s.src).map(s => cmdsToD(s.cmds)).join('');
   const imgs = r.shapes.filter(s => s.src).map(s => `<image href="${s.src}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none"/>`).join('');
   return `<svg viewBox="0 0 240 73" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Gravurvorlage schwarz auf weiß" style="display:block;width:100%;height:auto">
   <rect x=".2" y=".2" width="239.6" height="72.6" fill="#fff" stroke="#b5b5b5" stroke-width=".4"/>
@@ -2387,6 +2474,8 @@ async function ensureLogoSrc() {
     if (!window.opentype || !window.jspdf || !window.qrcode || !window.JSZip) throw new Error('Bibliotheken fehlen');
     loadFonts(); await loadWappen(); wire();
     try { const b = atob(ZIEGEL_FOTO.split(',')[1]), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); S.photo = URL.createObjectURL(new Blob([u], { type: 'image/jpeg' })); } catch (e) { }
+    // Ziegel-Foto vor dem ersten Bild fertig laden, sonst erscheint der Stein kurz ohne Foto
+    if (STEIN_BILD && S.photo) await new Promise(res => { if (cvImg(S.photo, res)) res(); setTimeout(res, 2000); });
     $('#bootMsg').remove();
     // Der Knopf in der Bestätigungs-E-Mail hängt den Schlüssel als ?ansicht=… an die Adresse (älter: #ansicht=…)
     let an = /^#ansicht=(z1\..+)$/.exec(location.hash || '');
@@ -2400,100 +2489,15 @@ async function ensureLogoSrc() {
 })();
 </script>
 <script>
-/* PROBE, nur lokal: Stein-Zeichnungen (SVG) nach dem Einfügen in eine Canvas-Fläche umwandeln.
-   Hintergrund: Samsung Internet färbt SVG im Dunkelmodus um, Canvas nicht. */
+/* PROBE: nur der Kennstreifen. Das Malen als Bildfläche steckt im Designer selbst (Schalter STEIN_BILD). */
 (function () {
-  const NS = 'http://www.w3.org/2000/svg';
-  let defsTxt = null;
-  window.__probeZeiten = [];
-  function vorbereiten(svg) {
-    const c = svg.cloneNode(true);
-    if (defsTxt == null) { const g = document.querySelector('svg defs #fGrain'); defsTxt = g ? g.closest('defs').innerHTML : ''; }
-    const d = document.createElementNS(NS, 'defs'); d.innerHTML = defsTxt; c.insertBefore(d, c.firstChild);
-    // Das Ziegel-Foto hängt als blob:-Adresse im SVG. In einem SVG-Bild muss es eingebettet sein.
-    c.querySelectorAll('image').forEach(im => { const h = im.getAttribute('href') || ''; if (h.startsWith('blob:') && typeof ZIEGEL_FOTO === 'string') im.setAttribute('href', ZIEGEL_FOTO); });
-    c.setAttribute('width', '240'); c.setAttribute('height', '73'); c.removeAttribute('style');
-    return new XMLSerializer().serializeToString(c);
-  }
-  async function wandeln(svg) {
-    if (svg.dataset.rb) return; svg.dataset.rb = '1';
-    const t0 = performance.now();
-    const zoom = svg.closest('.zoomStone') ? 3 : 1;
-    const breite = Math.max(240, Math.round(svg.getBoundingClientRect().width || 360)) * zoom, dpr = Math.min(3, window.devicePixelRatio || 1);
-    const url = URL.createObjectURL(new Blob([vorbereiten(svg)], { type: 'image/svg+xml' }));
-    try {
-      const img = new Image();
-      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
-      if (!svg.isConnected) return;
-      const cv = document.createElement('canvas'); cv.width = Math.min(4096, Math.round(breite * dpr)); cv.height = Math.round(cv.width * 73 / 240);
-      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-      cv.style.cssText = 'display:block;width:100%;height:auto'; cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', svg.getAttribute('aria-label') || '');
-      cv.dataset.probe = '1';
-      svg.replaceWith(cv);
-      window.__probeZeiten.push(Math.round(performance.now() - t0));
-    } catch (e) { window.__probeFehler = String(e && e.message || e); } finally { URL.revokeObjectURL(url); }
-  }
-  function suchen(root) {
-    if (!root || root.nodeType !== 1) return;
-    const sel = 'svg[viewBox="0 0 240 73"]';
-    if (root.matches && root.matches(sel)) wandeln(root);
-    if (root.querySelectorAll) root.querySelectorAll(sel).forEach(wandeln);
-  }
-  /* Gut sichtbare Kennzeichnung, damit man auf einem Bildschirmfoto erkennt, dass es die Probeseite ist */
   const band = document.createElement('div');
   band.style.cssText = 'position:sticky;top:0;z-index:50;background:#ffd400;color:#000;font:700 14px/1.3 Arial,sans-serif;padding:6px 10px;text-align:center';
   const ua = navigator.userAgent, br = (/SamsungBrowser\/([\d.]+)/.exec(ua) || /(?:Chrome|Firefox|Version)\/([\d.]+)/.exec(ua) || ['', '?']);
   const name = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Firefox/.test(ua) ? 'Firefox' : /Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'Browser';
   const dunkel = () => { try { return matchMedia('(prefers-color-scheme: dark)').matches ? 'dunkel' : 'hell'; } catch (e) { return '?'; } };
-  const zeigen = () => { band.textContent = 'PROBESEITE 3 · ' + name + ' ' + br[1] + ' · ' + dunkel() + (window.__probeFehler ? ' · Fehler: ' + window.__probeFehler : ''); };
+  const zeigen = () => { band.textContent = 'PROBESEITE 4 · ' + name + ' ' + br[1] + ' · ' + dunkel() + ' · ' + document.querySelectorAll('canvas.stCv').length + ' gemalt, ' + document.querySelectorAll('svg[viewBox="0 0 240 73"]').length + ' gezeichnet'; };
   document.body.insertBefore(band, document.body.firstChild); zeigen(); setInterval(zeigen, 700);
-
-  /* ---- Vergleichstafel: derselbe Stein auf acht Arten angezeigt. Ein Bildschirmfoto zeigt, welche Art das Handy nicht umfärbt. ---- */
-  let fotoP = null;
-  const foto = () => fotoP || (fotoP = new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = ZIEGEL_FOTO; }));
-  /* Stein ohne Umweg über eine Zeichnung direkt in eine Bildfläche malen */
-  async function nativ(d, bw, breite) {
-    const r = renderDesign(d), cv = document.createElement('canvas'), dpr = Math.min(3, window.devicePixelRatio || 1);
-    cv.width = Math.round(breite * dpr); cv.height = Math.round(cv.width * 73 / 240);
-    const c = cv.getContext('2d'), k = cv.width / 240; c.scale(k, k);
-    const p = new Path2D(r.shapes.filter(s => !s.src).map(s => cmdsToD(s.cmds)).join(''));
-    if (bw) { c.fillStyle = '#fff'; c.fillRect(0, 0, 240, 73); c.fillStyle = '#000'; c.fill(p); }
-    else {
-      const im = await foto();
-      if (im) { const s = Math.max(240 / im.width, 73 / im.height), w = im.width * s, h = im.height * s; c.drawImage(im, (240 - w) / 2, (73 - h) / 2, w, h); } else { c.fillStyle = '#c8674a'; c.fillRect(0, 0, 240, 73); }
-      c.save(); c.translate(.12, .24); c.fillStyle = 'rgba(242,185,160,.22)'; c.fill(p); c.restore();
-      c.fillStyle = 'rgba(19,19,21,.97)'; c.fill(p);
-      let g = c.createLinearGradient(0, 0, 0, 73); g.addColorStop(0, 'rgba(255,255,255,.2)'); g.addColorStop(.07, 'rgba(255,255,255,0)'); g.addColorStop(.82, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.32)'); c.fillStyle = g; c.fillRect(0, 0, 240, 73);
-      g = c.createLinearGradient(0, 0, 240, 0); g.addColorStop(0, 'rgba(0,0,0,.22)'); g.addColorStop(.05, 'rgba(0,0,0,0)'); g.addColorStop(.95, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.26)'); c.fillStyle = g; c.fillRect(0, 0, 240, 73);
-    }
-    cv.style.cssText = 'display:block;width:100%;height:auto'; return cv;
-  }
-  async function tafel() {
-    const d = standardDesign('TEST', 'Dein Name'), B = 180;
-    const box = document.createElement('div'); box.id = 'probeTafel';
-    box.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;font:600 12px/1.25 Arial,sans-serif';
-    const karte = (buchst, text, inhalt) => { const k = document.createElement('div'); const l = document.createElement('div'); l.textContent = buchst + ' ' + text; l.style.cssText = 'padding:0 0 3px 0'; k.appendChild(l); k.appendChild(inhalt); box.appendChild(k); };
-    // A: Zeichnung wie bisher (wird von der Umwandlung ausgenommen)
-    const a = document.createElement('div'); a.innerHTML = brickSvg(d); const sa = a.querySelector('svg'); if (sa) sa.dataset.rb = '1'; karte('A', 'Zeichnung wie bisher', a);
-    // B: Bildfläche, aus der Zeichnung erzeugt (Stand Probeseite 2)
-    const b = document.createElement('div'); b.innerHTML = brickSvg(d); karte('B', 'Bild aus Zeichnung', b);
-    // C: Bildfläche, direkt gemalt
-    const cC = await nativ(d, false, B); karte('C', 'direkt gemalt', cC);
-    // D: Foto-Datei aus C
-    const dI = new Image(); dI.src = cC.toDataURL('image/jpeg', .9); dI.style.cssText = 'display:block;width:100%;height:auto'; karte('D', 'als Foto-Datei', dI);
-    // E: Hintergrundbild aus C
-    const e = document.createElement('div'); e.style.cssText = 'width:100%;aspect-ratio:240/73;background:url(' + dI.src + ') center/cover no-repeat'; karte('E', 'als Hintergrund', e);
-    // F: wie C, mit Schutzangabe für das Element
-    const f = document.createElement('div'); f.style.cssText = 'color-scheme:only light;forced-color-adjust:none'; f.appendChild(await nativ(d, false, B)); karte('F', 'gemalt + Schutzangabe', f);
-    // G: Gravurvorlage schwarz auf weiß, direkt gemalt
-    const gC = await nativ(d, true, B); karte('G', 'Vorlage gemalt', gC);
-    // H: Gravurvorlage als Foto-Datei
-    const hI = new Image(); hI.src = gC.toDataURL('image/png'); hI.style.cssText = 'display:block;width:100%;height:auto'; karte('H', 'Vorlage als Foto-Datei', hI);
-    band.after(box);
-  }
-  (function warte(n) { if (typeof standardDesign === 'function' && typeof ZIEGEL_FOTO === 'string' && !document.querySelector('#bootMsg')) tafel().catch(err => { window.__probeFehler = 'Tafel: ' + (err && err.message || err); }); else if (n < 80) setTimeout(() => warte(n + 1), 250); })(0);
-  new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(suchen); }).observe(document.documentElement, { childList: true, subtree: true });
-  suchen(document.body);
 })();
 
 </script></body></html>
