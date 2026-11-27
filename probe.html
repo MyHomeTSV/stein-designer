@@ -2439,6 +2439,13 @@ async function ensureLogoSrc() {
     if (root.matches && root.matches(sel)) wandeln(root);
     if (root.querySelectorAll) root.querySelectorAll(sel).forEach(wandeln);
   }
+  /* Gut sichtbare Kennzeichnung, damit man auf einem Bildschirmfoto erkennt, dass es die Probeseite ist */
+  const band = document.createElement('div');
+  band.style.cssText = 'position:sticky;top:0;z-index:50;background:#ffd400;color:#000;font:700 14px/1.3 Arial,sans-serif;padding:6px 10px;text-align:center';
+  const ua = navigator.userAgent, br = (/SamsungBrowser\/([\d.]+)/.exec(ua) || /(?:Chrome|Firefox|Version)\/([\d.]+)/.exec(ua) || ['', '?']);
+  const name = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Firefox/.test(ua) ? 'Firefox' : /Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'Browser';
+  const zeigen = () => { band.textContent = 'PROBESEITE 2 · ' + name + ' ' + br[1] + ' · ' + document.querySelectorAll('canvas[data-probe]').length + ' Stein(e) als Bild' + (window.__probeFehler ? ' · Fehler: ' + window.__probeFehler : ''); };
+  document.body.insertBefore(band, document.body.firstChild); zeigen(); setInterval(zeigen, 700);
   new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(suchen); }).observe(document.documentElement, { childList: true, subtree: true });
   suchen(document.body);
 })();
