@@ -1247,7 +1247,24 @@ function cvPaint(cv) {
   if (cv.width !== W) { cv.width = W; cv.height = Math.round(W * 73 / 240); }
   const c = cv.getContext('2d'); c.setTransform(W / 240, 0, 0, W / 240, 0, 0); c.clearRect(0, 0, 240, 73);
   job(c, () => { if (cv.isConnected) cvPaint(cv); });
+  clearTimeout(cv._bt); cv._bt = setTimeout(() => cvBack(cv), 220);
 }
+/* Rückfall: Im Dunkel-Design zeigt Samsung Internet gemalte Bildflächen leer (geprüft 27.11.2026).
+   Darum liegt dasselbe Bild zusätzlich als Hintergrund unter der Fläche. Bleibt sie leer, sieht man das Bild. */
+function cvBack(cv) {
+  if (!cv.isConnected || !cv.toBlob) return;
+  try {
+    cv.toBlob(b => {
+      if (!b || !cv.isConnected) return;
+      const alt = cv._bu; cv._bu = URL.createObjectURL(b);
+      cv.style.background = 'url(' + cv._bu + ') 0 0/100% 100% no-repeat';
+      if (alt) setTimeout(() => URL.revokeObjectURL(alt), 1500);
+    }, 'image/png');
+  } catch (e) { }
+}
+function cvAlle() { clearTimeout(cvPaint.t); cvPaint.t = setTimeout(() => document.querySelectorAll('canvas.stCv').forEach(cvPaint), 250); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) cvAlle(); });
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', cvAlle); } catch (e) { }
 function cvRound(c, x, y, w, h, r) { c.beginPath(); if (c.roundRect) c.roundRect(x, y, w, h, r); else { c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); } }
 /* Grafik (Wappen, Logo) in einer Farbe malen. Die Bitmap dient nur als Maske. */
 function cvMask(c, img, s, color, dx, dy) {
@@ -1293,7 +1310,7 @@ function bwJob(d, r) {
     cvPlatz(c, ph, '#777');
   };
 }
-window.addEventListener('resize', () => { clearTimeout(cvPaint.t); cvPaint.t = setTimeout(() => document.querySelectorAll('canvas.stCv').forEach(cvPaint), 250); });
+window.addEventListener('resize', cvAlle);
 function brickSvg(d, opt = {}) {
   if (STEIN_BILD) return cvHtml(brickJob(d, opt, opt.render || renderDesign(d)), 'Vorschau: so sieht dein gravierter Stein aus');
   const r = opt.render || renderDesign(d), id = 'b' + (++UID), R = rng(hash(d.stein || 'TEST'));
@@ -2496,7 +2513,7 @@ async function ensureLogoSrc() {
   const ua = navigator.userAgent, br = (/SamsungBrowser\/([\d.]+)/.exec(ua) || /(?:Chrome|Firefox|Version)\/([\d.]+)/.exec(ua) || ['', '?']);
   const name = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Firefox/.test(ua) ? 'Firefox' : /Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'Browser';
   const dunkel = () => { try { return matchMedia('(prefers-color-scheme: dark)').matches ? 'dunkel' : 'hell'; } catch (e) { return '?'; } };
-  const zeigen = () => { band.textContent = 'PROBESEITE 4 · ' + name + ' ' + br[1] + ' · ' + dunkel() + ' · ' + document.querySelectorAll('canvas.stCv').length + ' gemalt, ' + document.querySelectorAll('svg[viewBox="0 0 240 73"]').length + ' gezeichnet'; };
+  const zeigen = () => { band.textContent = 'PROBESEITE 5 · ' + name + ' ' + br[1] + ' · ' + dunkel() + ' · ' + document.querySelectorAll('canvas.stCv').length + ' gemalt, ' + document.querySelectorAll('svg[viewBox="0 0 240 73"]').length + ' gezeichnet'; };
   document.body.insertBefore(band, document.body.firstChild); zeigen(); setInterval(zeigen, 700);
 })();
 
